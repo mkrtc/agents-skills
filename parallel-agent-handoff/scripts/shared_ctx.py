@@ -74,6 +74,97 @@ def git_root(path: Path) -> Path | None:
     return None
 
 
+def git_text(root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None
+
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def parse_worktree_list(output: str) -> list[dict[str, str]]:
+    worktrees: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+
+    for line in output.splitlines():
+        if not line:
+            if current:
+                worktrees.append(current)
+                current = {}
+            continue
+
+        key, separator, value = line.partition(" ")
+        if key == "worktree":
+            if current:
+                worktrees.append(current)
+            current = {"worktree": value}
+        elif separator:
+            current[key] = value
+        else:
+            current[key] = "1"
+
+    if current:
+        worktrees.append(current)
+    return worktrees
+
+
+def branch_name(worktree: dict[str, str]) -> str:
+    branch = worktree.get("branch", "")
+    prefix = "refs/heads/"
+    if branch.startswith(prefix):
+        return branch[len(prefix) :]
+    if branch:
+        return branch
+    if "detached" in worktree:
+        return "detached"
+    return ""
+
+
+def worktree_info(root: Path) -> dict[str, str | int]:
+    output = git_text(root, "worktree", "list", "--porcelain")
+    if output is None:
+        return {
+            "is_git_worktree": 0,
+            "is_linked_worktree": 0,
+            "worktree_name": "",
+            "worktree_path": "",
+            "main_worktree_path": "",
+            "branch": "",
+        }
+
+    current_root = root.resolve()
+    worktrees = parse_worktree_list(output)
+    main_path = Path(worktrees[0]["worktree"]).resolve() if worktrees else current_root
+    current = None
+    for worktree in worktrees:
+        path = Path(worktree["worktree"]).resolve()
+        if path == current_root:
+            current = worktree
+            break
+
+    if current is None:
+        current = {"worktree": str(current_root)}
+
+    current_path = Path(current["worktree"]).resolve()
+    return {
+        "is_git_worktree": 1,
+        "is_linked_worktree": 1 if current_path != main_path else 0,
+        "worktree_name": current_path.name,
+        "worktree_path": str(current_path),
+        "main_worktree_path": str(main_path),
+        "branch": branch_name(current),
+    }
+
+
 def normalize_shared_ctx_root(path: Path) -> Path:
     for current in (path, *path.parents):
         if current.name == "shared_ctx" and current.parent.name == "tmp":
@@ -306,6 +397,15 @@ def print_state(row: sqlite3.Row) -> None:
     print(f"is_project_in_gitignore={int(row['is_project_in_gitignore'])}")
     print(f"user_asked={int(row['user_asked'])}")
     print(f"checked_at={row['checked_at'] or ''}")
+
+
+def print_worktree_info(info: dict[str, str | int]) -> None:
+    print(f"is_git_worktree={info['is_git_worktree']}")
+    print(f"is_linked_worktree={info['is_linked_worktree']}")
+    print(f"worktree_name={info['worktree_name']}")
+    print(f"worktree_path={info['worktree_path']}")
+    print(f"main_worktree_path={info['main_worktree_path']}")
+    print(f"branch={info['branch']}")
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -560,11 +660,23 @@ def cmd_precommit_check(args: argparse.Namespace) -> int:
     if int(state["user_asked"]) == 0:
         print("ASK_USER: tmp/shared_ctx/ is not ignored.")
         print("Ask whether to add `tmp/shared_ctx/` to .gitignore.")
-        print("If yes, run: shared_ctx.py add-gitignore --root <project>")
-        print("If no, run: shared_ctx.py mark-user-asked --root <project>")
+        print(
+            "If yes, run: python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py "
+            "add-gitignore --root <project>"
+        )
+        print(
+            "If no, run: python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py "
+            "mark-user-asked --root <project>"
+        )
         return 2
 
     print("WARN: tmp/shared_ctx/ is not ignored, but the user has already been asked.")
+    return 0
+
+
+def cmd_worktree_info(args: argparse.Namespace) -> int:
+    root = project_root(args.root)
+    print_worktree_info(worktree_info(root))
     return 0
 
 
@@ -646,6 +758,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_common_root(precommit_parser)
     precommit_parser.set_defaults(func=cmd_precommit_check)
+
+    worktree_parser = subparsers.add_parser(
+        "worktree-info", help="Print current git worktree identity."
+    )
+    add_common_root(worktree_parser)
+    worktree_parser.set_defaults(func=cmd_worktree_info)
 
     return parser
 

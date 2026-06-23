@@ -19,6 +19,8 @@ Use a project-local SQLite queue so independent Codex sessions can exchange impl
 
 - Treat `--root` as the repository/project root where implementation work happens, not as the `tmp/shared_ctx` directory.
 - Prefer running helper commands from the project root with `--root .`; if the current directory is inside a git worktree, the helper resolves the git root automatically.
+- Run helper commands only with `python3`.
+- Before the final response, run `python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py worktree-info --root .`; if `is_linked_worktree=1`, include the current `worktree_name` and `branch` in the final response.
 - Never create a second queue under `tmp/shared_ctx/tmp/shared_ctx`.
 - Store state in `tmp/shared_ctx/shared_ctx.sqlite`.
 - Store Markdown mirrors in `tmp/shared_ctx/tasks/{task-id}.md`.
@@ -31,10 +33,11 @@ Use a project-local SQLite queue so independent Codex sessions can exchange impl
 Use the bundled helper instead of writing SQL manually:
 
 ```bash
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py init --root .
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py list --root . --status pending
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim price_api_doc --root . --agent frontend
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py done price_api_doc --root . --agent frontend
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py init --root .
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py list --root . --status pending
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim price_api_doc --root . --agent frontend
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py done price_api_doc --root . --agent frontend
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py worktree-info --root .
 ```
 
 ## SQLite State
@@ -59,7 +62,7 @@ Use this when the current agent receives a task that another agent should implem
 Example:
 
 ```bash
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py create price_api_doc \
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py create price_api_doc \
   --root . \
   --title "Price API contract" \
   --created-by backend \
@@ -86,22 +89,32 @@ If claiming fails because the status is not `pending`, assume another agent took
 Before making a commit in a project that uses this skill, run:
 
 ```bash
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py precommit-check --root .
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py precommit-check --root .
 ```
 
 If it prints `ASK_USER`, ask the user whether to add `tmp/shared_ctx/` to `.gitignore`. If the user agrees, run:
 
 ```bash
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py add-gitignore --root .
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py add-gitignore --root .
 ```
 
 If the user declines, run:
 
 ```bash
-python ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py mark-user-asked --root .
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py mark-user-asked --root .
 ```
 
 Do not ask again when `user_asked=1`; keep warning in the final response if `tmp/shared_ctx/` remains unignored.
+
+## Final Response
+
+At the end of work using this skill, run `worktree-info`. If it reports `is_linked_worktree=1`, include one concise line in the final response:
+
+```text
+Worktree: <worktree_name> (branch: <branch>)
+```
+
+If `branch` is empty, use `branch: unknown`. If it reports `is_linked_worktree=0` or `is_git_worktree=0`, do not mention a worktree.
 
 ## Document Contents
 
