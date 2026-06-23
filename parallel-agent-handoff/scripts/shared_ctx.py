@@ -496,10 +496,30 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_claim(args: argparse.Namespace) -> int:
-    root = project_root(args.root)
-    task_id = normalize_task_id(args.task)
-    conn = connect(root, create=False)
+def print_task_candidates(rows: list[sqlite3.Row]) -> None:
+    for row in rows:
+        print(
+            "\t".join(
+                [
+                    row["id"],
+                    row["status"],
+                    row["title"],
+                    row["target_owner"] or "",
+                    row["updated_at"],
+                ]
+            ),
+            file=sys.stderr,
+        )
+
+
+def claim_task(
+    root: Path,
+    conn: sqlite3.Connection,
+    task_id: str,
+    *,
+    agent: str,
+    no_body: bool,
+) -> int:
     now = utc_now()
 
     with immediate_transaction(conn):
@@ -515,7 +535,7 @@ def cmd_claim(args: argparse.Namespace) -> int:
                 updated_at = ?
             WHERE id = ? AND status = 'pending'
             """,
-            (args.agent, now, now, task_id),
+            (agent, now, now, task_id),
         )
         if conn.execute("SELECT changes()").fetchone()[0] != 1:
             raise SharedCtxError(f"Task was claimed by another agent: {task_id}")
@@ -525,10 +545,45 @@ def cmd_claim(args: argparse.Namespace) -> int:
     print(f"claimed={task_id}")
     print(f"status=progress")
     print(f"markdown={path}")
-    if not args.no_body:
+    if not no_body:
         print("")
         print(clean_body_md(row["body_md"]).rstrip())
     return 0
+
+
+def cmd_claim(args: argparse.Namespace) -> int:
+    root = project_root(args.root)
+    task_id = normalize_task_id(args.task)
+    conn = connect(root, create=False)
+    return claim_task(root, conn, task_id, agent=args.agent, no_body=args.no_body)
+
+
+def cmd_claim_next(args: argparse.Namespace) -> int:
+    root = project_root(args.root)
+    conn = connect(root, create=False)
+    params: list[str] = []
+    where = "status = 'pending'"
+    if args.target_owner:
+        where += " AND target_owner = ?"
+        params.append(args.target_owner)
+
+    rows = conn.execute(
+        f"""
+        SELECT id, status, title, target_owner, updated_at
+        FROM tasks
+        WHERE {where}
+        ORDER BY created_at, id
+        """,
+        params,
+    ).fetchall()
+    if not rows:
+        raise SharedCtxError("No matching pending tasks.")
+    if len(rows) > 1:
+        print("Multiple pending tasks match. Ask the user which task to claim:", file=sys.stderr)
+        print_task_candidates(rows)
+        return 2
+
+    return claim_task(root, conn, rows[0]["id"], agent=args.agent, no_body=args.no_body)
 
 
 def cmd_done(args: argparse.Namespace) -> int:
@@ -715,6 +770,15 @@ def build_parser() -> argparse.ArgumentParser:
     claim_parser.add_argument("--no-body", action="store_true", help="Do not print task body.")
     add_common_root(claim_parser)
     claim_parser.set_defaults(func=cmd_claim)
+
+    claim_next_parser = subparsers.add_parser(
+        "claim-next", help="Atomically claim the oldest matching pending task."
+    )
+    claim_next_parser.add_argument("--agent", required=True, help="Claiming agent/session name.")
+    claim_next_parser.add_argument("--target-owner", help="Only claim tasks for this owner.")
+    claim_next_parser.add_argument("--no-body", action="store_true", help="Do not print task body.")
+    add_common_root(claim_next_parser)
+    claim_next_parser.set_defaults(func=cmd_claim_next)
 
     done_parser = subparsers.add_parser("done", help="Mark a claimed task as done.")
     done_parser.add_argument("task", help="Task id.")

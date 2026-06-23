@@ -35,6 +35,7 @@ Use the bundled helper instead of writing SQL manually:
 ```bash
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py init --root .
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py list --root . --status pending
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim-next --root . --agent frontend
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim price_api_doc --root . --agent frontend
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py done price_api_doc --root . --agent frontend
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py worktree-info --root .
@@ -77,12 +78,17 @@ Use the template in `assets/task-template.md` for handoff structure. Include eno
 Use this when the user tells the current agent to implement a contract or task from another agent.
 
 1. List only pending task metadata with `list --status pending`.
-2. Claim the selected task with `claim {task-id} --agent {agent-name}`.
-3. Read and implement the body only after `claim` succeeds.
-4. Add a completion note if useful.
-5. Mark the task done with `done {task-id} --agent {agent-name}`.
+2. If the request is to work on or implement a queue task, do not stop after listing.
+3. If there is exactly one pending task, claim it immediately with `claim-next --agent {agent-name}` or `claim {task-id} --agent {agent-name}`.
+4. If there are multiple pending tasks, do not choose automatically even when one appears to match the current role/session. Ask the user which task id to claim.
+5. Read and implement the body only after `claim` succeeds.
+6. Add a completion note if useful.
+7. Mark the task done with `done {task-id} --agent {agent-name}`.
 
 If claiming fails because the status is not `pending`, assume another agent took or completed the task. Do not read the body.
+If `claim-next` reports multiple matching pending tasks, show the candidate task ids/titles and ask the user which one to claim.
+
+Do not list `progress` or `done` before claiming unless the user asks for a queue audit/status report. If the user only asks to list, inspect, or report queue status, list metadata and do not claim.
 
 ## Commit Guard
 
