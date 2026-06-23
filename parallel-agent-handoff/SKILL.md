@@ -17,6 +17,9 @@ Use a project-local SQLite queue so independent Codex sessions can exchange impl
 
 ## Protocol
 
+- Treat `--root` as the repository/project root where implementation work happens, not as the `tmp/shared_ctx` directory.
+- Prefer running helper commands from the project root with `--root .`; if the current directory is inside a git worktree, the helper resolves the git root automatically.
+- Never create a second queue under `tmp/shared_ctx/tmp/shared_ctx`.
 - Store state in `tmp/shared_ctx/shared_ctx.sqlite`.
 - Store Markdown mirrors in `tmp/shared_ctx/tasks/{task-id}.md`.
 - Use task ids with lowercase letters, digits, underscores, or hyphens: `price_api_doc`, `auth-contract`, `checkout_api`.

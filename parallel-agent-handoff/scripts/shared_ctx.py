@@ -45,8 +45,48 @@ def normalize_task_id(raw: str) -> str:
     return task_id
 
 
+def nearest_existing_dir(path: Path) -> Path:
+    if path.exists():
+        return path if path.is_dir() else path.parent
+    for parent in path.parents:
+        if parent.exists():
+            return parent if parent.is_dir() else parent.parent
+    return path
+
+
+def git_root(path: Path) -> Path | None:
+    probe = nearest_existing_dir(path)
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(probe), "rev-parse", "--show-toplevel"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None
+
+    if result.returncode == 0:
+        output = result.stdout.strip()
+        if output:
+            return Path(output).resolve()
+    return None
+
+
+def normalize_shared_ctx_root(path: Path) -> Path:
+    for current in (path, *path.parents):
+        if current.name == "shared_ctx" and current.parent.name == "tmp":
+            return current.parent.parent
+    return path
+
+
 def project_root(raw: str) -> Path:
-    return Path(raw).resolve()
+    raw_path = Path(raw).resolve()
+    discovered = git_root(raw_path)
+    if discovered is not None:
+        return discovered
+    return normalize_shared_ctx_root(raw_path)
 
 
 def ctx_dir(root: Path) -> Path:
