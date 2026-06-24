@@ -49,6 +49,7 @@ Expected OpenCode integration:
 
 - `opencode-sessions` is installed in global OpenCode config for general session handoff/fork workflows.
 - `~/.config/opencode/plugins/parallel-agent-handoff-spawner.js` is a local OpenCode plugin that exposes `shared_ctx_spawn_sessions`. Local plugins in `~/.config/opencode/plugins/` are auto-loaded by OpenCode on startup.
+- `shared_ctx_spawn_sessions` creates child sessions immediately but queues their prompts until the dispatcher session emits `session.idle`; this avoids starting child model/API requests while the parent session is still busy.
 
 If OpenCode has just been reconfigured, tell the user to restart OpenCode Desktop/TUI before expecting new tools to appear.
 
@@ -93,8 +94,9 @@ Use this when the user asks to send, spawn, or launch agents to execute queued t
 3. Do not claim selected tasks in the dispatcher session.
 4. Do not read task bodies in the dispatcher session.
 5. If the OpenCode tool `shared_ctx_spawn_sessions` is available, call it once with the selected task ids/titles, `project_root`, and `default_agent: "build"` unless the user requested another OpenCode agent.
-6. The spawned session prompt must tell the child agent to claim the exact task id first, then read and implement the body printed by the helper, then mark it done.
-7. Report spawned task ids, titles, and session ids.
+6. Expect the tool to create sessions now and send prompts only after the dispatcher session becomes idle. Do not manually resend prompts unless the tool reports a dispatch failure.
+7. The spawned session prompt must tell the child agent to claim the exact task id first, then read and implement the body printed by the helper, then mark it done.
+8. Report spawned task ids, titles, and session ids.
 
 Preferred OpenCode tool call shape:
 
@@ -102,6 +104,8 @@ Preferred OpenCode tool call shape:
 shared_ctx_spawn_sessions({
   project_root: "/absolute/project/root",
   default_agent: "build",
+  initial_delay_ms: 1000,
+  stagger_ms: 1500,
   tasks: [
     { task_id: "price_api_doc", title: "Price API contract" }
   ]
