@@ -49,7 +49,7 @@ Expected OpenCode integration:
 
 - `opencode-sessions` is installed in global OpenCode config for general session handoff/fork workflows.
 - `~/.config/opencode/plugins/parallel-agent-handoff-spawner.js` is a local OpenCode plugin that exposes `shared_ctx_spawn_sessions`. Local plugins in `~/.config/opencode/plugins/` are auto-loaded by OpenCode on startup.
-- `shared_ctx_spawn_sessions` creates child sessions immediately but queues their prompts until the dispatcher session emits `session.idle`; this avoids starting child model/API requests while the parent session is still busy.
+- `shared_ctx_spawn_sessions` creates child sessions immediately, inherits the parent session model when possible, and queues prompts until the dispatcher session emits `session.idle` or `session.status=idle`. If no idle event is observed, it uses a fallback timer.
 
 If OpenCode has just been reconfigured, tell the user to restart OpenCode Desktop/TUI before expecting new tools to appear.
 
@@ -93,8 +93,8 @@ Use this when the user asks to send, spawn, or launch agents to execute queued t
 2. If the user says to dispatch all pending tasks, select all pending rows. If the user gives task ids, select only those ids. If there are multiple pending tasks and the request does not clearly mean all or name exact ids, ask which task ids to dispatch.
 3. Do not claim selected tasks in the dispatcher session.
 4. Do not read task bodies in the dispatcher session.
-5. If the OpenCode tool `shared_ctx_spawn_sessions` is available, call it once with the selected task ids/titles, `project_root`, and `default_agent: "build"` unless the user requested another OpenCode agent.
-6. Expect the tool to create sessions now and send prompts only after the dispatcher session becomes idle. Do not manually resend prompts unless the tool reports a dispatch failure.
+5. If the OpenCode tool `shared_ctx_spawn_sessions` is available, call it once with the selected task ids/titles and `project_root`. Do not set `default_agent` unless the user requested a specific OpenCode agent; the tool defaults to the current agent, then `build`.
+6. Expect the tool to create sessions now and send prompts after the dispatcher session becomes idle/status-idle, with fallback dispatch if the idle event is not observed. Do not manually resend prompts unless the tool reports a dispatch failure.
 7. The spawned session prompt must tell the child agent to claim the exact task id first, then read and implement the body printed by the helper, then mark it done.
 8. Report spawned task ids, titles, and session ids.
 
@@ -103,14 +103,16 @@ Preferred OpenCode tool call shape:
 ```typescript
 shared_ctx_spawn_sessions({
   project_root: "/absolute/project/root",
-  default_agent: "build",
-  initial_delay_ms: 1000,
-  stagger_ms: 1500,
+  initial_delay_ms: 250,
+  stagger_ms: 750,
+  fallback_delay_ms: 5000,
   tasks: [
     { task_id: "price_api_doc", title: "Price API contract" }
   ]
 })
 ```
+
+Only pass `model_provider_id` and `model_id` when the user explicitly asks to force a model. Otherwise let the tool inherit the parent session model so spawned sessions use the same working API provider as the dispatcher.
 
 If only the `session` tool from `opencode-sessions` is available, use `session({ mode: "new", agent: "build", text: "<claim-first prompt>" })` once per selected task. Put `Chat title should be: <task title>` at the top of the prompt, but understand that `opencode-sessions` itself does not accept a title argument. If neither OpenCode spawn tool is available, do not claim the task; explain that session spawning is unavailable in the current environment and leave tasks pending.
 
