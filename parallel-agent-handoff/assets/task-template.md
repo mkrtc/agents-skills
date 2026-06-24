@@ -2,6 +2,7 @@
 
 Created by: <agent/session/role>
 Target owner: <agent/session/role>
+Role: executor
 Created at: <YYYY-MM-DD HH:MM TZ>
 
 ## Objective
@@ -17,10 +18,23 @@ Created at: <YYYY-MM-DD HH:MM TZ>
 - <File/module/component/service to change>
 - <File/module/component/service to change>
 
+## Dependencies
+
+- <Task ids that must be done first, or "None">
+
+## Parallel Safety
+
+- May touch: <files/modules/components owned by this task>
+- Must avoid: <files/modules/components owned by other parallel tasks>
+
 ## Acceptance Criteria
 
 - <Observable check that proves the task is done>
 - <Observable check that proves the task is done>
+
+## Validation
+
+- <Command or manual check the executor should run>
 
 ## Artifacts
 
