@@ -6,9 +6,10 @@ description: >-
   mirrors. Use when multiple agents need to split backend/frontend or
   cross-module work, hand off API contracts, claim pending tasks, avoid
   duplicate implementation, verify shared_ctx gitignore safety before commits,
-  or mark inter-agent tasks as pending/progress/done. Also use for Russian
-  prompts about "параллельная работа агентов", "передай доку фронту/бэку",
-  "контракт для другого агента", "sqlite shared_ctx", or "shared_ctx".
+  mark inter-agent tasks as pending/progress/done, or spawn OpenCode sessions
+  to execute pending tasks. Also use for Russian prompts about "параллельная
+  работа агентов", "передай доку фронту/бэку", "контракт для другого агента",
+  "отправь агентов на задачи", "sqlite shared_ctx", or "shared_ctx".
 ---
 
 # Parallel Agent Handoff
@@ -29,6 +30,7 @@ Use a project-local SQLite queue so independent Codex sessions can exchange impl
 - Treat the database row as the lock. Only `pending` rows are available to claim.
 - Do not infer status from Markdown if the SQLite database exists.
 - Do not read task bodies from Markdown or SQLite before a successful claim unless the user explicitly asks for audit or context recovery.
+- When running inside OpenCode and asked to send agents to execute tasks, prefer spawning OpenCode sessions instead of doing the tasks in the dispatcher session.
 
 Use the bundled helper instead of writing SQL manually:
 
@@ -40,6 +42,15 @@ python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim pric
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py done price_api_doc --root . --agent frontend
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py worktree-info --root .
 ```
+
+## OpenCode Setup
+
+Expected OpenCode integration:
+
+- `opencode-sessions` is installed in global OpenCode config for general session handoff/fork workflows.
+- `~/.config/opencode/plugins/parallel-agent-handoff-spawner.js` is a local OpenCode plugin that exposes `shared_ctx_spawn_sessions`. Local plugins in `~/.config/opencode/plugins/` are auto-loaded by OpenCode on startup.
+
+If OpenCode has just been reconfigured, tell the user to restart OpenCode Desktop/TUI before expecting new tools to appear.
 
 ## SQLite State
 
@@ -72,6 +83,34 @@ python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py create pri
 ```
 
 Use the template in `assets/task-template.md` for handoff structure. Include enough detail for the receiving agent to start without asking the writer to restate context.
+
+## OpenCode Dispatch Workflow
+
+Use this when the user asks to send, spawn, or launch agents to execute queued tasks, for example "отправь агентов на выполнение тасков".
+
+1. Run `list --status pending` and inspect metadata only.
+2. If the user says to dispatch all pending tasks, select all pending rows. If the user gives task ids, select only those ids. If there are multiple pending tasks and the request does not clearly mean all or name exact ids, ask which task ids to dispatch.
+3. Do not claim selected tasks in the dispatcher session.
+4. Do not read task bodies in the dispatcher session.
+5. If the OpenCode tool `shared_ctx_spawn_sessions` is available, call it once with the selected task ids/titles, `project_root`, and `default_agent: "build"` unless the user requested another OpenCode agent.
+6. The spawned session prompt must tell the child agent to claim the exact task id first, then read and implement the body printed by the helper, then mark it done.
+7. Report spawned task ids, titles, and session ids.
+
+Preferred OpenCode tool call shape:
+
+```typescript
+shared_ctx_spawn_sessions({
+  project_root: "/absolute/project/root",
+  default_agent: "build",
+  tasks: [
+    { task_id: "price_api_doc", title: "Price API contract" }
+  ]
+})
+```
+
+If only the `session` tool from `opencode-sessions` is available, use `session({ mode: "new", agent: "build", text: "<claim-first prompt>" })` once per selected task. Put `Chat title should be: <task title>` at the top of the prompt, but understand that `opencode-sessions` itself does not accept a title argument. If neither OpenCode spawn tool is available, do not claim the task; explain that session spawning is unavailable in the current environment and leave tasks pending.
+
+When creating new handoff tasks and dispatching them immediately, create all pending tasks first, then dispatch those task ids through this workflow.
 
 ## Reader Workflow
 

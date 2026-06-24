@@ -1,4 +1,4 @@
 interface:
   display_name: "Parallel Agent Handoff"
-  short_description: "Coordinate Codex sessions with SQLite tasks"
-  default_prompt: "Use $parallel-agent-handoff to coordinate backend and frontend work through SQLite-backed shared tasks."
+  short_description: "Coordinate agents with SQLite and OpenCode"
+  default_prompt: "Use $parallel-agent-handoff to create shared tasks and dispatch OpenCode agents safely."
