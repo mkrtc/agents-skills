@@ -5,10 +5,10 @@ description: >-
   a SQLite-backed shared task queue under tmp/shared_ctx with Markdown task
   mirrors. Use when multiple agents need orchestrator/executor roles, detailed
   handoff plans, split backend/frontend or cross-module work, hand off API
-  contracts, claim pending tasks, write executor result reports, avoid
-  duplicate implementation, verify shared_ctx gitignore safety before commits,
-  mark tasks as pending/progress/done, or spawn OpenCode sessions to execute
-  pending tasks.
+  contracts, claim pending tasks, write executor result reports, delete one or
+  all queued tasks with their files, avoid duplicate implementation, verify
+  shared_ctx gitignore safety before commits, mark tasks as pending/progress/done,
+  or spawn OpenCode sessions to execute pending tasks.
   Also use for Russian prompts about "параллельная работа агентов",
   "оркестратор", "оректор", "арекстор", "исполнитель", "передай доку
   фронту/бэку", "контракт для другого агента", "отправь агентов на задачи",
@@ -45,6 +45,8 @@ python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim-next
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim price_api_doc --root . --agent frontend
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py done price_api_doc --root . --agent frontend --result-file /tmp/price_api_result.md --summary "Implemented price API UI"
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py show-result price_api_doc --root .
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py delete price_api_doc --root .
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py delete-all --root .
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py worktree-info --root .
 ```
 
@@ -255,6 +257,17 @@ Every executor result report should include:
 - Blockers: unresolved issues, or `None`.
 
 The executor final chat response can be short. The result report is the durable handoff artifact for orchestration.
+
+## Cleanup Workflow
+
+Use cleanup commands when the user asks to remove old, completed, stale, test, or all shared tasks.
+
+- Delete one task with `delete {task-id} --root .`.
+- Delete all queue tasks with `delete-all --root .`.
+- Do not manually edit SQLite or remove individual files for normal cleanup.
+- `delete` removes the task row plus its task mirror and result report files.
+- `delete-all` removes all task rows plus all files under `tmp/shared_ctx/tasks/` and `tmp/shared_ctx/results/`.
+- Cleanup preserves `tmp/shared_ctx/shared_ctx.sqlite` and `project_state` so gitignore/precommit metadata remains intact.
 
 ## Failure Handling
 

@@ -379,6 +379,78 @@ def refresh_result_markdown(root: Path, conn: sqlite3.Connection, task_id: str) 
     return write_result_markdown(root, row)
 
 
+def is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def safe_unlink_shared_ctx_path(root: Path, path: Path) -> bool:
+    shared_root = ctx_dir(root)
+    if path.is_symlink():
+        if not is_relative_to(path.parent, shared_root):
+            raise SharedCtxError(f"Refusing to delete symlink outside tmp/shared_ctx: {path}")
+        path.unlink()
+        return True
+
+    resolved = path.resolve()
+    if not is_relative_to(resolved, shared_root):
+        raise SharedCtxError(f"Refusing to delete path outside tmp/shared_ctx: {path}")
+    if not resolved.exists():
+        return False
+    if resolved.is_dir():
+        raise SharedCtxError(f"Refusing to delete directory as a task artifact: {path}")
+    path.unlink()
+    return True
+
+
+def task_artifact_paths(root: Path, row: sqlite3.Row) -> list[Path]:
+    task_id = row["id"]
+    candidates = [
+        root / row["md_path"],
+        tasks_dir(root) / f"{task_id}.md",
+        tasks_dir(root) / f"{task_id}.pending.md",
+        tasks_dir(root) / f"{task_id}.progress.md",
+        tasks_dir(root) / f"{task_id}.done.md",
+        results_dir(root) / f"{task_id}.md",
+    ]
+    if row["result_md_path"]:
+        candidates.append(root / row["result_md_path"])
+
+    seen: set[Path] = set()
+    paths: list[Path] = []
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        paths.append(path)
+    return paths
+
+
+def clear_directory_contents(root: Path, directory: Path) -> tuple[int, int]:
+    if not directory.exists():
+        return 0, 0
+    if not is_relative_to(directory, ctx_dir(root)):
+        raise SharedCtxError(f"Refusing to clear path outside tmp/shared_ctx: {directory}")
+
+    files_deleted = 0
+    dirs_deleted = 0
+    for path in sorted(directory.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+        if path.is_dir() and not path.is_symlink():
+            try:
+                path.rmdir()
+                dirs_deleted += 1
+            except OSError:
+                pass
+            continue
+        if safe_unlink_shared_ctx_path(root, path):
+            files_deleted += 1
+    return files_deleted, dirs_deleted
+
+
 def body_from_args(args: argparse.Namespace) -> str:
     if getattr(args, "body_file", None):
         return Path(args.body_file).read_text(encoding="utf-8")
@@ -750,6 +822,48 @@ def cmd_show_result(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_delete(args: argparse.Namespace) -> int:
+    root = project_root(args.root)
+    task_id = normalize_task_id(args.task)
+    conn = connect(root, create=False)
+
+    with immediate_transaction(conn):
+        row = get_task(conn, task_id)
+        paths = task_artifact_paths(root, row)
+        conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        if conn.execute("SELECT changes()").fetchone()[0] != 1:
+            raise SharedCtxError(f"Task was changed by another agent: {task_id}")
+
+    files_deleted = 0
+    for path in paths:
+        if safe_unlink_shared_ctx_path(root, path):
+            files_deleted += 1
+
+    print(f"deleted={task_id}")
+    print("rows_deleted=1")
+    print(f"files_deleted={files_deleted}")
+    return 0
+
+
+def cmd_delete_all(args: argparse.Namespace) -> int:
+    root = project_root(args.root)
+    conn = connect(root, create=False)
+
+    with immediate_transaction(conn):
+        row_count = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        conn.execute("DELETE FROM tasks")
+
+    task_files_deleted, task_dirs_deleted = clear_directory_contents(root, tasks_dir(root))
+    result_files_deleted, result_dirs_deleted = clear_directory_contents(root, results_dir(root))
+
+    print("deleted=all")
+    print(f"rows_deleted={row_count}")
+    print(f"task_files_deleted={task_files_deleted}")
+    print(f"result_files_deleted={result_files_deleted}")
+    print(f"dirs_deleted={task_dirs_deleted + result_dirs_deleted}")
+    return 0
+
+
 def cmd_export_md(args: argparse.Namespace) -> int:
     root = project_root(args.root)
     task_id = normalize_task_id(args.task)
@@ -921,6 +1035,17 @@ def build_parser() -> argparse.ArgumentParser:
     show_result_parser.add_argument("--body-only", action="store_true")
     add_common_root(show_result_parser)
     show_result_parser.set_defaults(func=cmd_show_result)
+
+    delete_parser = subparsers.add_parser("delete", help="Delete one task and its files.")
+    delete_parser.add_argument("task", help="Task id.")
+    add_common_root(delete_parser)
+    delete_parser.set_defaults(func=cmd_delete)
+
+    delete_all_parser = subparsers.add_parser(
+        "delete-all", help="Delete all tasks and task/result files."
+    )
+    add_common_root(delete_all_parser)
+    delete_all_parser.set_defaults(func=cmd_delete_all)
 
     export_parser = subparsers.add_parser("export-md", help="Rewrite a task Markdown mirror.")
     export_parser.add_argument("task", help="Task id.")
