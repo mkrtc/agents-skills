@@ -188,6 +188,10 @@ def tasks_dir(root: Path) -> Path:
     return ctx_dir(root) / "tasks"
 
 
+def results_dir(root: Path) -> Path:
+    return ctx_dir(root) / "results"
+
+
 def db_path(root: Path) -> Path:
     return ctx_dir(root) / DB_NAME
 
@@ -207,6 +211,7 @@ def immediate_transaction(conn: sqlite3.Connection):
 def connect(root: Path, *, create: bool) -> sqlite3.Connection:
     if create:
         tasks_dir(root).mkdir(parents=True, exist_ok=True)
+        results_dir(root).mkdir(parents=True, exist_ok=True)
     elif not db_path(root).exists():
         raise SharedCtxError(f"Shared context database does not exist: {db_path(root)}")
 
@@ -216,8 +221,14 @@ def connect(root: Path, *, create: bool) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     if create:
         conn.execute("PRAGMA journal_mode = WAL")
-        ensure_schema(conn)
+    ensure_schema(conn)
     return conn
+
+
+def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -236,7 +247,10 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             claimed_at TEXT,
             done_at TEXT,
             updated_at TEXT NOT NULL,
-            md_path TEXT NOT NULL
+            md_path TEXT NOT NULL,
+            result_md TEXT NOT NULL DEFAULT '',
+            result_md_path TEXT,
+            result_summary TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_tasks_status_created
@@ -252,6 +266,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    ensure_column(conn, "tasks", "result_md", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(conn, "tasks", "result_md_path", "TEXT")
+    ensure_column(conn, "tasks", "result_summary", "TEXT")
     now = utc_now()
     conn.execute(
         """
@@ -298,12 +315,35 @@ def render_task_markdown(row: sqlite3.Row) -> str:
         f"Completed by: `{row['completed_by'] or ''}`",
         f"Created at: `{row['created_at']}`",
         f"Updated at: `{row['updated_at']}`",
+        f"Result report: `{row['result_md_path'] or ''}`",
+        f"Result summary: `{row['result_summary'] or ''}`",
         "",
         "Source of truth: `tmp/shared_ctx/shared_ctx.sqlite`.",
         "",
         "---",
         "",
         body.rstrip(),
+        "",
+    ]
+    return "\n".join(parts)
+
+
+def render_result_markdown(row: sqlite3.Row) -> str:
+    result = clean_body_md(row["result_md"] or "")
+    parts = [
+        f"# Result: {row['title']}",
+        "",
+        f"Task ID: `{row['id']}`",
+        f"Status: `{row['status']}`",
+        f"Completed by: `{row['completed_by'] or ''}`",
+        f"Done at: `{row['done_at'] or ''}`",
+        f"Result summary: `{row['result_summary'] or ''}`",
+        "",
+        "Source of truth: `tmp/shared_ctx/shared_ctx.sqlite`.",
+        "",
+        "---",
+        "",
+        result.rstrip(),
         "",
     ]
     return "\n".join(parts)
@@ -318,15 +358,48 @@ def write_task_markdown(root: Path, row: sqlite3.Row) -> Path:
     return path
 
 
+def write_result_markdown(root: Path, row: sqlite3.Row) -> Path | None:
+    if not row["result_md_path"] or not (row["result_md"] or "").strip():
+        return None
+    path = root / row["result_md_path"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(render_result_markdown(row), encoding="utf-8")
+    os.replace(tmp, path)
+    return path
+
+
 def refresh_task_markdown(root: Path, conn: sqlite3.Connection, task_id: str) -> Path:
     row = get_task(conn, task_id)
     return write_task_markdown(root, row)
+
+
+def refresh_result_markdown(root: Path, conn: sqlite3.Connection, task_id: str) -> Path | None:
+    row = get_task(conn, task_id)
+    return write_result_markdown(root, row)
 
 
 def body_from_args(args: argparse.Namespace) -> str:
     if getattr(args, "body_file", None):
         return Path(args.body_file).read_text(encoding="utf-8")
     return getattr(args, "body", None) or ""
+
+
+def result_from_args(args: argparse.Namespace) -> str:
+    if getattr(args, "result_file", None):
+        return Path(args.result_file).read_text(encoding="utf-8")
+    return getattr(args, "result", None) or ""
+
+
+def result_summary(result_md: str) -> str:
+    for raw_line in result_md.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        line = re.sub(r"^#+\s*", "", line).strip(" -*`")
+        if line:
+            return line[:200]
+    return ""
 
 
 def check_gitignore(root: Path) -> bool:
@@ -414,6 +487,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     state = update_gitignore_state(root, conn)
     print(f"database={db_path(root)}")
     print(f"tasks_dir={tasks_dir(root)}")
+    print(f"results_dir={results_dir(root)}")
     print_state(state)
     return 0
 
@@ -466,7 +540,8 @@ def cmd_list(args: argparse.Namespace) -> int:
     conn = connect(root, create=False)
     params: list[str] = []
     query = (
-        "SELECT id, status, title, created_by, target_owner, claimed_by, updated_at, md_path "
+        "SELECT id, status, title, created_by, target_owner, claimed_by, updated_at, "
+        "md_path, result_md_path, result_summary "
         "FROM tasks"
     )
     if args.status:
@@ -490,6 +565,8 @@ def cmd_list(args: argparse.Namespace) -> int:
                     row["claimed_by"] or "",
                     row["updated_at"],
                     row["md_path"],
+                    row["result_md_path"] or "",
+                    row["result_summary"] or "",
                 ]
             )
         )
@@ -592,6 +669,9 @@ def cmd_done(args: argparse.Namespace) -> int:
     conn = connect(root, create=False)
     now = utc_now()
     note = body_from_args(args).strip()
+    result_md = result_from_args(args).strip()
+    if not result_md and note:
+        result_md = note
 
     with immediate_transaction(conn):
         row = get_task(conn, task_id)
@@ -600,6 +680,13 @@ def cmd_done(args: argparse.Namespace) -> int:
         body_md = row["body_md"]
         if note:
             body_md = body_md.rstrip() + f"\n\n## Completion\n\n{note}\n"
+        stored_result_md = row["result_md"] or ""
+        stored_result_path = row["result_md_path"]
+        stored_result_summary = row["result_summary"]
+        if result_md:
+            stored_result_md = clean_body_md(result_md)
+            stored_result_path = f"tmp/shared_ctx/results/{task_id}.md"
+            stored_result_summary = args.summary or result_summary(stored_result_md)
         conn.execute(
             """
             UPDATE tasks
@@ -607,18 +694,33 @@ def cmd_done(args: argparse.Namespace) -> int:
                 completed_by = ?,
                 done_at = ?,
                 updated_at = ?,
-                body_md = ?
+                body_md = ?,
+                result_md = ?,
+                result_md_path = ?,
+                result_summary = ?
             WHERE id = ? AND status = 'progress'
             """,
-            (args.agent, now, now, body_md, task_id),
+            (
+                args.agent,
+                now,
+                now,
+                body_md,
+                stored_result_md,
+                stored_result_path,
+                stored_result_summary,
+                task_id,
+            ),
         )
         if conn.execute("SELECT changes()").fetchone()[0] != 1:
             raise SharedCtxError(f"Task was changed by another agent: {task_id}")
 
     path = refresh_task_markdown(root, conn, task_id)
+    result_path = refresh_result_markdown(root, conn, task_id)
     print(f"done={task_id}")
     print(f"status=done")
     print(f"markdown={path}")
+    if result_path:
+        print(f"result_report={result_path}")
     return 0
 
 
@@ -634,12 +736,29 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_show_result(args: argparse.Namespace) -> int:
+    root = project_root(args.root)
+    task_id = normalize_task_id(args.task)
+    conn = connect(root, create=False)
+    row = get_task(conn, task_id)
+    if not row["result_md_path"] or not (row["result_md"] or "").strip():
+        raise SharedCtxError(f"Task has no result report: {task_id}")
+    if args.body_only:
+        print(clean_body_md(row["result_md"]).rstrip())
+    else:
+        print(render_result_markdown(row).rstrip())
+    return 0
+
+
 def cmd_export_md(args: argparse.Namespace) -> int:
     root = project_root(args.root)
     task_id = normalize_task_id(args.task)
     conn = connect(root, create=False)
     path = refresh_task_markdown(root, conn, task_id)
     print(path)
+    result_path = refresh_result_markdown(root, conn, task_id)
+    if result_path:
+        print(result_path)
     return 0
 
 
@@ -785,6 +904,9 @@ def build_parser() -> argparse.ArgumentParser:
     done_parser.add_argument("--agent", required=True, help="Completing agent/session name.")
     done_parser.add_argument("--body", help="Completion note in Markdown.")
     done_parser.add_argument("--body-file", help="Path to a completion note file.")
+    done_parser.add_argument("--result", help="Executor result report in Markdown.")
+    done_parser.add_argument("--result-file", help="Path to an executor result report file.")
+    done_parser.add_argument("--summary", help="One-line result summary.")
     add_common_root(done_parser)
     done_parser.set_defaults(func=cmd_done)
 
@@ -793,6 +915,12 @@ def build_parser() -> argparse.ArgumentParser:
     show_parser.add_argument("--body-only", action="store_true")
     add_common_root(show_parser)
     show_parser.set_defaults(func=cmd_show)
+
+    show_result_parser = subparsers.add_parser("show-result", help="Show a task result report.")
+    show_result_parser.add_argument("task", help="Task id.")
+    show_result_parser.add_argument("--body-only", action="store_true")
+    add_common_root(show_result_parser)
+    show_result_parser.set_defaults(func=cmd_show_result)
 
     export_parser = subparsers.add_parser("export-md", help="Rewrite a task Markdown mirror.")
     export_parser.add_argument("task", help="Task id.")

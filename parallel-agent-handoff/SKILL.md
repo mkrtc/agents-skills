@@ -5,9 +5,10 @@ description: >-
   a SQLite-backed shared task queue under tmp/shared_ctx with Markdown task
   mirrors. Use when multiple agents need orchestrator/executor roles, detailed
   handoff plans, split backend/frontend or cross-module work, hand off API
-  contracts, claim pending tasks, avoid duplicate implementation, verify
-  shared_ctx gitignore safety before commits, mark tasks as
-  pending/progress/done, or spawn OpenCode sessions to execute pending tasks.
+  contracts, claim pending tasks, write executor result reports, avoid
+  duplicate implementation, verify shared_ctx gitignore safety before commits,
+  mark tasks as pending/progress/done, or spawn OpenCode sessions to execute
+  pending tasks.
   Also use for Russian prompts about "параллельная работа агентов",
   "оркестратор", "оректор", "арекстор", "исполнитель", "передай доку
   фронту/бэку", "контракт для другого агента", "отправь агентов на задачи",
@@ -27,6 +28,7 @@ Use a project-local SQLite queue so independent Codex sessions can exchange impl
 - Never create a second queue under `tmp/shared_ctx/tmp/shared_ctx`.
 - Store state in `tmp/shared_ctx/shared_ctx.sqlite`.
 - Store Markdown mirrors in `tmp/shared_ctx/tasks/{task-id}.md`.
+- Store executor result reports in `tmp/shared_ctx/results/{task-id}.md`; the task row keeps `result_md_path` and `result_summary`.
 - Use task ids with lowercase letters, digits, underscores, or hyphens: `price_api_doc`, `auth-contract`, `checkout_api`.
 - Use only these task statuses in SQLite: `pending`, `progress`, `done`.
 - Treat the database row as the lock. Only `pending` rows are available to claim.
@@ -41,7 +43,8 @@ python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py init --roo
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py list --root . --status pending
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim-next --root . --agent frontend
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py claim price_api_doc --root . --agent frontend
-python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py done price_api_doc --root . --agent frontend
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py done price_api_doc --root . --agent frontend --result-file /tmp/price_api_result.md --summary "Implemented price API UI"
+python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py show-result price_api_doc --root .
 python3 ~/.agents/skills/parallel-agent-handoff/scripts/shared_ctx.py worktree-info --root .
 ```
 
@@ -67,7 +70,9 @@ Use this when the prompt says the current agent is an orchestrator.
 6. Create tasks with `create`; leave them in `pending`.
 7. Do not claim or implement executor tasks from the orchestrator session.
 8. If the user asks to send agents after planning, create all tasks first, then use the OpenCode Dispatch Workflow for the independent pending tasks.
-9. Report the created task ids and any dependency ordering.
+9. When checking completed work, list done task metadata and read the `result_md_path` files or use `show-result`; do not rely on status alone.
+10. Use result reports to decide whether follow-up tasks, corrections, or new executor direction are needed.
+11. Report the created task ids and any dependency ordering.
 
 The orchestrator may write `tmp/shared_ctx` queue state and Markdown handoff documents. It must not edit product/source files unless the user explicitly stops the orchestration workflow and asks this session to implement.
 
@@ -79,7 +84,8 @@ Use this when the prompt says the current agent is an executor.
 2. If no task id is named, follow the Reader Workflow.
 3. Read and implement the task body only after a successful claim.
 4. Use the task's ownership boundaries and acceptance criteria as the implementation contract.
-5. Mark the task done only after implementation and reasonable verification are complete.
+5. Before marking done, write a concise Markdown result report for the orchestrator. Create the parent directory if needed.
+6. Mark the task done only after implementation and reasonable verification are complete, passing `--result-file` and `--summary`.
 
 If the executor is blocked after claiming, leave the task in `progress`, explain the blocker, and do not silently return it to `pending`.
 
@@ -89,7 +95,7 @@ Expected OpenCode integration:
 
 - `opencode-sessions` is installed in global OpenCode config for general session handoff/fork workflows.
 - `~/.config/opencode/plugins/parallel-agent-handoff-spawner.js` is a local OpenCode plugin that exposes `shared_ctx_spawn_sessions`. Local plugins in `~/.config/opencode/plugins/` are auto-loaded by OpenCode on startup.
-- `shared_ctx_spawn_sessions` creates child sessions immediately, inherits the parent session model when possible, and queues prompts until the dispatcher session emits `session.idle` or `session.status=idle`. If no idle event is observed, it uses a fallback timer.
+- `shared_ctx_spawn_sessions` creates child sessions immediately, inherits the parent session model and variant when possible, and queues prompts until the dispatcher session emits `session.idle` or `session.status=idle`. If no idle event is observed, it uses a fallback timer.
 
 If OpenCode has just been reconfigured, tell the user to restart OpenCode Desktop/TUI before expecting new tools to appear.
 
@@ -114,6 +120,7 @@ The helper creates a `tasks` table with task metadata, Markdown body, ownership,
 - `user_asked`: whether the user has already been asked about adding `tmp/shared_ctx/` to `.gitignore`.
 
 Keep `tmp/shared_ctx/` in `tmp/` and usually out of git. The SQLite database, WAL files, and Markdown mirrors are runtime coordination state, not source code.
+Executor result reports are coordination artifacts, not source code.
 
 ## Writer Workflow
 
@@ -148,7 +155,8 @@ Use this when the user asks to send, spawn, or launch agents to execute queued t
 5. If the OpenCode tool `shared_ctx_spawn_sessions` is available, call it once with the selected task ids/titles and `project_root`. Do not set `default_agent` unless the user requested a specific OpenCode agent; the tool defaults to the current agent, then `build`.
 6. Expect the tool to create sessions now and send prompts after the dispatcher session becomes idle/status-idle, with fallback dispatch if the idle event is not observed. Do not manually resend prompts unless the tool reports a dispatch failure.
 7. The spawned session prompt must identify the child agent as an `executor`, tell it to claim the exact task id first, then read and implement the body printed by the helper, then mark it done.
-8. Report spawned task ids, titles, and session ids.
+8. The spawned session prompt must require a Markdown result report and `done --result-file ... --summary ...`.
+9. Report spawned task ids, titles, and session ids.
 
 Preferred OpenCode tool call shape:
 
@@ -164,7 +172,7 @@ shared_ctx_spawn_sessions({
 })
 ```
 
-Only pass `model_provider_id` and `model_id` when the user explicitly asks to force a model. Otherwise let the tool inherit the parent session model so spawned sessions use the same working API provider as the dispatcher.
+Only pass `model_provider_id`, `model_id`, and `model_variant` when the user explicitly asks to force a model or reasoning preset. Otherwise let the tool inherit the parent session model and variant so spawned sessions use the same working API provider and reasoning preset as the dispatcher.
 
 If only the `session` tool from `opencode-sessions` is available, use `session({ mode: "new", agent: "build", text: "<claim-first executor prompt>" })` once per selected task. Put `Chat title should be: <task title>` and `Role: executor` at the top of the prompt, but understand that `opencode-sessions` itself does not accept a title argument. If neither OpenCode spawn tool is available, do not claim the task; explain that session spawning is unavailable in the current environment and leave tasks pending.
 
@@ -179,8 +187,8 @@ Use this when the user tells the current agent to implement a contract or task f
 3. If there is exactly one pending task, claim it immediately with `claim-next --agent {agent-name}` or `claim {task-id} --agent {agent-name}`.
 4. If there are multiple pending tasks, do not choose automatically even when one appears to match the current role/session. Ask the user which task id to claim.
 5. Read and implement the body only after `claim` succeeds.
-6. Add a completion note if useful.
-7. Mark the task done with `done {task-id} --agent {agent-name}`.
+6. Write a result report with what changed, changed files, validation, follow-ups, and blockers.
+7. Mark the task done with `done {task-id} --agent {agent-name} --result-file <path> --summary <one-line summary>`.
 
 If claiming fails because the status is not `pending`, assume another agent took or completed the task. Do not read the body.
 If `claim-next` reports multiple matching pending tasks, show the candidate task ids/titles and ask the user which one to claim.
@@ -235,6 +243,18 @@ Every handoff document should include:
 - Risks or blockers: anything that can break integration.
 
 Keep the document concise but executable. Do not include broad project background unless the receiving agent needs it to implement the task.
+
+## Result Report Contents
+
+Every executor result report should include:
+
+- Summary: one or two sentences about the completed work.
+- Changed files: exact paths touched, or `None` for chat-only/report-only tasks.
+- Validation: commands or manual checks run and their results.
+- Follow-ups: anything the orchestrator should schedule next.
+- Blockers: unresolved issues, or `None`.
+
+The executor final chat response can be short. The result report is the durable handoff artifact for orchestration.
 
 ## Failure Handling
 

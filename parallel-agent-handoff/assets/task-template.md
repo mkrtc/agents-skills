@@ -36,6 +36,14 @@ Created at: <YYYY-MM-DD HH:MM TZ>
 
 - <Command or manual check the executor should run>
 
+## Result Report
+
+- Summary: <what the orchestrator needs to know when this is done>
+- Changed files: <expected file paths, or "None">
+- Validation: <expected command/check output>
+- Follow-ups: <what may need another task>
+- Blockers: <known unresolved issues, or "None">
+
 ## Artifacts
 
 - <Relevant paths, generated schemas, migrations, examples, or commands>
