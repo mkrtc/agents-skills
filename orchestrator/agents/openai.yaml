@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchestrator"
+  short_description: "Plan work and spawn Craft Agents worker sessions."
+  default_prompt: "Use orchestrator to plan this project task, split it into executor tasks, and spawn Craft Agents sessions when requested."
