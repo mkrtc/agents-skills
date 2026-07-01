@@ -24,6 +24,7 @@ When coordinating Craft Agent sessions, follow the `craft-agent-workflow` conven
 - Use read-only exploration for planning. Do not edit project files during orchestration unless explicitly authorized.
 - Receive and review worker reports before declaring the overall work complete.
 - If confidence in a worker result is below 95%, spawn a separate audit/review agent before accepting the result.
+- Every non-orchestrator agent you spawn (executor, worker, audit, review, plan-auditor) must have the `subagent` label.
 - Handle messages prefixed with `OFFTOP`/aliases as ephemeral side checks yourself, without polluting the durable plan or worker context.
 - When a new task arrives while workers are still running, decide whether to merge it into the current plan or spawn a peer orchestrator.
 
@@ -157,6 +158,7 @@ Plan auditor prompts must include:
 
 - Orchestrator session ID.
 - Shared tag and project name.
+- Required labels: `subagent`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Complexity score and justification.
 - Original user task.
 - Relevant project context.
@@ -245,6 +247,7 @@ Rules:
 
 - Write each worker prompt to a temporary `.md` file first.
 - Use a short, specific session name in `${tag} ${title}` format.
+- Every non-orchestrator spawned agent must get the `subagent` label. If the spawn tool supports labels, set it at spawn time; otherwise include a prompt instruction requiring the agent to set/preserve `subagent` itself.
 - Include `--send` only when the user asked to launch workers immediately.
 - Omit `--send` when the user asked to prepare sessions but not start execution.
 - Spawn sessions only after the task prompts are complete.
@@ -273,6 +276,7 @@ Then include:
 - Required worker session name format: `${tag} ${title}`
 - Project name for `project::<name>` label
 - Worktree name for `worktree::<name>`, if applicable
+- Required initial labels: `subagent`, `project::<name>`, `status::in-progress`, plus `worktree::<name>` if applicable
 - Project root/current working directory
 - Task title
 - Task objective
@@ -284,13 +288,29 @@ Then include:
 - Required final response format
 - Finalization instructions
 
-Finalization instructions for workers:
+Required label/status instructions for every spawned non-orchestrator agent:
 
-- On success, set `status::done` and Craft session status `done`.
-- If Git readiness applies, set exactly one of `git::progress`, `git::ready`, or `git::pushed`.
-- If working in a worktree, preserve `worktree::<name>`.
-- Return/send the final output to the orchestrator session ID.
-- If blocked, set `status::blocked`, keep the Craft session status open, and report the blocker clearly.
+- At start, ensure labels include `subagent`, `project::<name>`, and `status::in-progress`.
+- If working in a worktree, also include/preserve `worktree::<name>`.
+- Preserve unrelated labels when changing a status label.
+- At the end, never leave the session in `status::in-progress`.
+
+Finalization mapping for workers:
+
+| Outcome | Required label update | Required Craft session status | Required report behavior |
+|---|---|---|---|
+| Success | replace old `status::...` with `status::done` | `done` | final report and output to orchestrator |
+| Blocked | replace old `status::...` with `status::blocked` | `needs-review` | explain blocker and what is needed |
+| Error | replace old `status::...` with `status::error` | `needs-review` | explain error, failed command/tool, and recovery hint |
+| Cancelled | replace old `status::...` with `status::cancelled` | `cancelled` | explain cancellation reason |
+
+Git readiness, if applicable:
+
+- set `git::progress` if not ready to push;
+- set `git::ready` if ready to push;
+- set `git::pushed` if already pushed.
+
+Return/send the final output to the orchestrator session ID. If label/status update fails, the worker must mention it explicitly in the final report.
 
 Required final response format for workers:
 

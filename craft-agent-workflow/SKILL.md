@@ -117,7 +117,19 @@ Use:
 subagent
 ```
 
-Apply only to spawned worker, executor, and audit sessions. Do not apply it to the parent orchestrator session.
+Every non-orchestrator agent spawned by an orchestrator must have the `subagent` label.
+
+This includes:
+
+- executor agents;
+- worker agents;
+- audit/review agents;
+- plan-auditor agents;
+- any other bounded task agent created by the orchestrator.
+
+Do not apply `subagent` to the parent orchestrator session.
+
+Peer orchestrators are separate orchestrator streams and are not subagents.
 
 ### Priority Label
 
@@ -145,7 +157,7 @@ Recommended values:
 - `status::wait-answer` — the agent is waiting for a user answer.
 - `status::blocked` — the agent cannot continue without help or missing input.
 - `status::review` — the result is under review or audit.
-- `status::failed` — the agent failed the task.
+- `status::error` — the agent hit an execution/tool/runtime error and could not complete normally.
 - `status::cancelled` — the task was cancelled.
 - `status::done` — the agent completed its assigned task.
 
@@ -234,13 +246,23 @@ Craft session status is a lifecycle bucket such as `todo`, `needs-review`, `done
 
 Labels are richer metadata.
 
-Guidelines:
+Worker status transition rules:
 
-- Worker starts: session status usually `todo`; label `status::in-progress`.
-- Worker blocked: keep session status open; label `status::blocked`.
-- Worker completed: set label `status::done` and Craft session status `done`.
-- Orchestrator awaiting review: set label `status::review` and, when useful, Craft session status `needs-review`.
-- Cancelled work: set label `status::cancelled` and Craft session status `cancelled`.
+| Worker condition | Required label transition | Required Craft session status |
+|---|---|---|
+| Work starts / is actively running | replace old `status::...` with `status::in-progress` | keep/open as `todo` unless already set by orchestrator |
+| Work completed successfully | replace `status::in-progress` with `status::done` | `done` |
+| Worker is blocked by missing info/dependency/access | replace `status::in-progress` with `status::blocked` | `needs-review` |
+| Worker hit an execution/tool/runtime error | replace `status::in-progress` with `status::error` | `needs-review` |
+| Work was cancelled | replace `status::in-progress` with `status::cancelled` | `cancelled` |
+
+Additional rules:
+
+- Any non-orchestrator agent spawned by an orchestrator must have the `subagent` label.
+- The worker agent is responsible for updating its own labels and Craft session status at the end of its task.
+- The worker must preserve unrelated labels such as `project::...`, `subagent`, `git::...`, and `worktree::...`.
+- The worker must not leave itself in `status::in-progress` after it has finished, blocked, errored, or cancelled.
+- Orchestrators awaiting review can use label `status::review` and Craft session status `needs-review`.
 
 ## OFFTOP / Ephemeral Requests
 
@@ -372,6 +394,7 @@ Plan auditor prompts must include:
 
 - Orchestrator session ID.
 - Shared tag and project name.
+- Required labels: `subagent`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Complexity score and justification.
 - Original user task.
 - Relevant project context.
@@ -430,7 +453,8 @@ Every spawned worker prompt must include:
 - Acceptance criteria.
 - Verification commands or manual checks.
 - Required final report format.
-- Finalization instructions.
+- Explicit required starting labels: `subagent`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
+- Explicit finalization instructions, including the worker's responsibility to switch itself from `status::in-progress` to `status::done`, `status::blocked`, or `status::error` and to update its Craft session status.
 
 Every spawned worker prompt must start with:
 
@@ -442,23 +466,48 @@ Work only on the task below.
 
 ## Worker Finalization
 
-When a worker completes successfully, it must:
+The worker agent is responsible for its own final state. The orchestrator must include these instructions in every worker prompt.
 
-1. Produce the required final report.
-2. Set its labels so it has `status::done`.
-3. Set Git readiness if applicable:
+At start or before meaningful work, every non-orchestrator spawned agent must ensure its labels include:
+
+```text
+subagent
+project::<name>
+status::in-progress
+```
+
+If working in a worktree, it must also preserve/add:
+
+```text
+worktree::<name>
+```
+
+When the worker is done with its assigned scope, it must not leave itself in `status::in-progress`.
+
+Final state mapping:
+
+| Outcome | Required label update | Required Craft session status | Required report behavior |
+|---|---|---|---|
+| Success | replace old `status::...` with `status::done` | `done` | provide final report and return/send output to orchestrator |
+| Blocked | replace old `status::...` with `status::blocked` | `needs-review` | explain blocker and what is needed to continue |
+| Error | replace old `status::...` with `status::error` | `needs-review` | explain error, failed command/tool, and recovery hint |
+| Cancelled | replace old `status::...` with `status::cancelled` | `cancelled` | explain cancellation reason |
+
+Implementation rules:
+
+1. Read current labels first.
+2. Ensure `subagent` is present for every non-orchestrator spawned agent.
+3. Ensure `project::<name>` is present when project name is known.
+4. Remove only old `status::...` labels.
+5. Preserve unrelated labels such as `project::...`, `subagent`, `git::...`, and `worktree::...`.
+6. Set exactly one final `status::...` label.
+7. Set Craft session status according to the mapping above.
+8. If Git readiness applies, set exactly one of:
    - `git::progress` if not ready to push;
    - `git::ready` if ready to push;
    - `git::pushed` if already pushed.
-4. Set its Craft session status to `done`.
-5. Return/send its output to the orchestrator session.
-
-If blocked, the worker must:
-
-1. Set `status::blocked`.
-2. Keep Craft session status open.
-3. Report the blocker clearly.
-4. Avoid claiming completion.
+9. Return/send the final output to the orchestrator session.
+10. If label/status update fails, mention that explicitly in the final report.
 
 ## Worker Final Report Format
 

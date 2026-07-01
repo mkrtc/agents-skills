@@ -10,7 +10,7 @@ This reference mirrors the conventions from `craft-agent-workflow/SKILL.md` and 
 [${tag}] Orchestrator (${project_name})
 ```
 
-### Worker / subagent / audit session
+### Worker / subagent / audit / plan-auditor session
 
 ```text
 ${tag} ${title}
@@ -54,9 +54,19 @@ Use on every session that belongs to a project/workstream.
 
 ### `subagent`
 
-Use only on spawned worker/audit sessions, not on the orchestrator.
+Every non-orchestrator agent spawned by an orchestrator must have this label.
 
-Peer orchestrators are not subagents; do not label them with `subagent`.
+This includes:
+
+- executor agents;
+- worker agents;
+- audit/review agents;
+- plan-auditor agents;
+- any other bounded task agent created by the orchestrator.
+
+Do not apply it to the parent orchestrator session.
+
+Peer orchestrators are not subagents; do not label peer orchestrators with `subagent`.
 
 ### `priority::<number>`
 
@@ -74,7 +84,7 @@ Recommended values:
 - `status::wait-answer`
 - `status::blocked`
 - `status::review`
-- `status::failed`
+- `status::error`
 - `status::cancelled`
 - `status::done`
 
@@ -101,6 +111,33 @@ When changing one dimension with `set_session_labels`, preserve all unrelated la
 - changing `worktree::...` should not remove task/project status labels.
 
 Always read current labels first, then replace only the relevant valued-label dimension.
+
+## Worker finalization mapping
+
+Every non-orchestrator spawned agent starts or works with:
+
+```text
+subagent
+project::<name>
+status::in-progress
+```
+
+If it works in a worktree, also preserve/add:
+
+```text
+worktree::<name>
+```
+
+When the worker finishes, it must not leave itself as `status::in-progress`.
+
+| Outcome | Required label update | Required Craft session status |
+|---|---|---|
+| Success | replace old `status::...` with `status::done` | `done` |
+| Blocked | replace old `status::...` with `status::blocked` | `needs-review` |
+| Error | replace old `status::...` with `status::error` | `needs-review` |
+| Cancelled | replace old `status::...` with `status::cancelled` | `cancelled` |
+
+The spawned agent updates its own labels and Craft session status at the end of its task, preserving unrelated labels.
 
 ## Removed legacy labels
 
