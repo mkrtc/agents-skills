@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "labels": [
+    {
+      "id": "development",
+      "name": "Development",
+      "color": {
+        "light": "#3B82F6",
+        "dark": "#60A5FA"
+      },
+      "children": [
+        {
+          "id": "code",
+          "name": "Code",
+          "color": {
+            "light": "#4F46E5",
+            "dark": "#818CF8"
+          }
+        },
+        {
+          "id": "bug",
+          "name": "Bug",
+          "color": {
+            "light": "#0EA5E9",
+            "dark": "#38BDF8"
+          }
+        },
+        {
+          "id": "automation",
+          "name": "Automation",
+          "color": {
+            "light": "#06B6D4",
+            "dark": "#22D3EE"
+          }
+        }
+      ]
+    },
+    {
+      "id": "content",
+      "name": "Content",
+      "color": {
+        "light": "#8B5CF6",
+        "dark": "#A78BFA"
+      },
+      "children": [
+        {
+          "id": "writing",
+          "name": "Writing",
+          "color": {
+            "light": "#7C3AED",
+            "dark": "#C4B5FD"
+          }
+        },
+        {
+          "id": "research",
+          "name": "Research",
+          "color": {
+            "light": "#A855F7",
+            "dark": "#C084FC"
+          }
+        },
+        {
+          "id": "design",
+          "name": "Design",
+          "color": {
+            "light": "#D946EF",
+            "dark": "#E879F9"
+          }
+        }
+      ]
+    },
+    {
+      "id": "priority",
+      "name": "Priority",
+      "color": {
+        "light": "#F59E0B",
+        "dark": "#FBBF24"
+      },
+      "valueType": "number"
+    },
+    {
+      "id": "project",
+      "name": "Project",
+      "color": "foreground/50",
+      "valueType": "string"
+    },
+    {
+      "id": "subagent",
+      "name": "Subagent",
+      "color": {
+        "light": "#F97316",
+        "dark": "#FB923C"
+      }
+    },
+    {
+      "id": "status",
+      "name": "Status",
+      "color": "foreground/60",
+      "valueType": "string"
+    },
+    {
+      "id": "git",
+      "name": "GIT",
+      "color": {
+        "light": "#F59E0B",
+        "dark": "#FBBF24"
+      },
+      "valueType": "string"
+    },
+    {
+      "id": "worktree",
+      "name": "Worktree",
+      "color": {
+        "light": "#10B981",
+        "dark": "#34D399"
+      },
+      "valueType": "string"
+    },
+    {
+      "id": "agent-status",
+      "name": "Agent Status",
+      "color": "foreground/60",
+      "children": [
+        {
+          "id": "ready",
+          "name": "Ready",
+          "color": {
+            "light": "#3B82F6",
+            "dark": "#60A5FA"
+          }
+        },
+        {
+          "id": "in-progress",
+          "name": "In Progress",
+          "color": {
+            "light": "#6366F1",
+            "dark": "#818CF8"
+          }
+        },
+        {
+          "id": "wait",
+          "name": "Wait",
+          "color": {
+            "light": "#64748B",
+            "dark": "#94A3B8"
+          }
+        },
+        {
+          "id": "wait-answer",
+          "name": "Wait for Answer",
+          "color": {
+            "light": "#F97316",
+            "dark": "#FB923C"
+          }
+        },
+        {
+          "id": "blocked",
+          "name": "Blocked",
+          "color": {
+            "light": "#EF4444",
+            "dark": "#F87171"
+          }
+        },
+        {
+          "id": "review",
+          "name": "Review",
+          "color": {
+            "light": "#A855F7",
+            "dark": "#C084FC"
+          }
+        },
+        {
+          "id": "ready-for-push",
+          "name": "Ready for Push",
+          "color": {
+            "light": "#F59E0B",
+            "dark": "#FBBF24"
+          }
+        },
+        {
+          "id": "pushed",
+          "name": "Pushed",
+          "color": {
+            "light": "#22C55E",
+            "dark": "#4ADE80"
+          }
+        },
+        {
+          "id": "failed",
+          "name": "Failed",
+          "color": {
+            "light": "#B91C1C",
+            "dark": "#FCA5A5"
+          }
+        },
+        {
+          "id": "cancelled",
+          "name": "Cancelled",
+          "color": {
+            "light": "#6B7280",
+            "dark": "#9CA3AF"
+          }
+        }
+      ]
+    }
+  ]
+}
