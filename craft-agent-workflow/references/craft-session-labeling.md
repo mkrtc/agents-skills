@@ -102,9 +102,24 @@ When changing one dimension with `set_session_labels`, preserve all unrelated la
 
 Always read current labels first, then replace only the relevant valued-label dimension.
 
-## Legacy labels
+## Removed legacy labels
 
-Legacy boolean `agent-status` children may still exist in older sessions/configs. New sessions should prefer:
+The old boolean `agent-status` tree has been removed from the current labels config.
+
+Do not use these removed labels for new sessions:
+
+- `ready`
+- `in-progress`
+- `wait`
+- `wait-answer`
+- `blocked`
+- `review`
+- `ready-for-push`
+- `pushed`
+- `failed`
+- `cancelled`
+
+Use instead:
 
 - `status::<name>` for operational status;
 - `git::ready` instead of `ready-for-push`;

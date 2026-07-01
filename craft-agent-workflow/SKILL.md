@@ -189,16 +189,30 @@ Example:
 worktree::servarium-backend-auth-fix
 ```
 
-### Legacy Agent Status Labels
+### Removed Legacy Agent Status Labels
 
-Older configs may contain a boolean `agent-status` label tree with children like `ready`, `in-progress`, `ready-for-push`, and `pushed`.
+The old boolean `agent-status` label tree was removed from the current labels config.
 
-For new sessions:
+Do not use these removed labels for new sessions:
 
-- Use `status::<name>` instead of legacy boolean operational labels.
-- Use `git::ready` instead of `ready-for-push`.
-- Use `git::pushed` instead of `pushed`.
-- Do not delete legacy labels from old sessions unless the user explicitly asks for migration/cleanup.
+- `ready`
+- `in-progress`
+- `wait`
+- `wait-answer`
+- `blocked`
+- `review`
+- `ready-for-push`
+- `pushed`
+- `failed`
+- `cancelled`
+
+Use instead:
+
+- `status::<name>` for operational status.
+- `git::ready` instead of `ready-for-push`.
+- `git::pushed` instead of `pushed`.
+
+If older sessions still contain these labels, treat them as historical metadata and do not re-add them to the config without an explicit user request.
 
 ## Updating Labels Safely
 
