@@ -90,6 +90,14 @@ Preferences are not fully replaced. The installer adds or updates a managed bloc
 
 Existing preference notes outside that block are preserved.
 
+## Craft Agent workflow references
+
+Key reference files:
+
+- `craft-agent-workflow/references/craft-session-labeling.md` — labels, statuses, Git/worktree label conventions.
+- `craft-agent-workflow/references/planning-audit.md` — orchestrator complexity scoring and mandatory plan-audit protocol.
+- `craft-agent-workflow/references/preferences-note.md` — managed preference note merged by the installer.
+
 ## Useful installer options
 
 ```bash

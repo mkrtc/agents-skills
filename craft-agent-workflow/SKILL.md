@@ -10,7 +10,7 @@ Use this skill when coordinating Craft Agent sessions, naming orchestrators/work
 ## Core Principles
 
 - Keep orchestration and execution separate.
-- The orchestrator plans, splits, dispatches, collects reports, and requests audits. It does not implement product/code changes itself.
+- The orchestrator plans, scores task complexity from 1 to 5, runs the required plan audit gate, splits, dispatches, collects reports, and requests audits. It does not implement product/code changes itself.
 - Spawned workers execute one bounded task and report back to the orchestrator.
 - Peer orchestrators may be spawned for separate orchestration streams; they are not subagents.
 - `OFFTOP` requests are ephemeral side checks handled by the orchestrator directly; do not add them to the durable plan/task context.
@@ -306,6 +306,92 @@ Peer orchestrator prompt requirements:
 - Explicitly instruct: if it discovers the task is actually safe and non-conflicting, it may proceed in the current workspace according to project rules.
 - Require it to follow `craft-agent-workflow` naming, labels, statuses, worktree, and audit rules.
 
+## Planning Complexity and Plan Audit Gate
+
+Before spawning executor workers, the orchestrator must assess task complexity and run the required plan audit workflow.
+
+Every orchestrator plan must include:
+
+```text
+Complexity: <1-5>/5
+Reasoning: <short justification>
+```
+
+Complexity scale:
+
+| Score | Meaning | Typical signs |
+|---|---|---|
+| `1` | Very simple | Localized, low-risk, one small change or clear investigation |
+| `2` | Simple | Bounded task, known pattern, limited files/modules, low ambiguity |
+| `3` | Moderate | Multiple files/modules, some ambiguity, integration concerns, meaningful testing needed |
+| `4` | Hard | Cross-module/system changes, migrations, infra/deploy risk, concurrency, external APIs, security/data risk |
+| `5` | Very hard | High ambiguity or high blast radius, architecture changes, critical security/data/destructive risk, many dependencies |
+
+### Audit Counts
+
+For complexity `1` or `2`:
+
+- Draft the plan.
+- Spawn `1` plan-auditor agent.
+- Incorporate accepted findings.
+- Produce the final plan.
+- Only then spawn executor workers if execution is requested/approved.
+
+For complexity `3` or higher, use two audit rounds:
+
+| Complexity | Plan auditors per round |
+|---|---:|
+| `3` | `1` |
+| `4` | `2` |
+| `5` | `3` |
+
+Workflow for complexity `3+`:
+
+1. Draft the plan.
+2. Spawn the required number of round-1 plan auditors.
+3. Collect round-1 audit reports.
+4. Rewrite the plan using accepted audit findings.
+5. Spawn the same number of round-2 plan auditors.
+6. Collect round-2 audit reports.
+7. Produce the final plan using the last audit findings.
+8. Only then spawn executor workers if execution is requested/approved.
+
+If a plan audit finds blocking uncertainty that cannot be resolved from available context, ask the user or create a discovery task before implementation.
+
+### Plan Auditor Role
+
+Plan auditors are audit agents, not implementation workers.
+
+Plan auditor session names should use:
+
+```text
+${tag} Plan Audit R<round>-<n>
+```
+
+Plan auditor prompts must include:
+
+- Orchestrator session ID.
+- Shared tag and project name.
+- Complexity score and justification.
+- Original user task.
+- Relevant project context.
+- Draft or revised plan to audit.
+- Explicit instruction not to implement code.
+- Review criteria: inaccuracies, vulnerabilities, weak points, bad decisions, missing dependencies, unclear requirements, file/worktree conflicts, test gaps, rollout/deploy risks, security/data risks, and over/under-scoping.
+
+Required plan auditor response format:
+
+```text
+Plan Audit Result:
+- Verdict: pass | needs-changes | blocked
+- Critical findings:
+- Major findings:
+- Minor findings:
+- Missing context/questions:
+- Recommended plan changes:
+- Confidence in plan after changes:
+```
+
 ## Orchestrator Responsibilities
 
 The orchestrator must not implement product/source changes directly.
@@ -313,16 +399,20 @@ The orchestrator must not implement product/source changes directly.
 The orchestrator is responsible for:
 
 1. Inspecting enough project context to plan safely.
-2. Producing a detailed plan.
-3. Splitting the plan into independent tasks.
-4. Dispatching tasks to spawned agents.
-5. Giving each agent a complete self-contained prompt.
-6. Receiving final reports from agents.
-7. Checking reports for completeness, contradictions, and risk.
-8. Spawning audit/review agents whenever confidence in a worker result is below 95%.
-9. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
-10. Handling OFFTOP side requests ephemerally without polluting the durable task context.
-11. Creating follow-up tasks when work is incomplete or risky.
+2. Assessing task complexity from 1 to 5 and justifying it.
+3. Producing a detailed draft plan.
+4. Running the required complexity-based plan audit gate before executor dispatch.
+5. Rewriting the plan based on audit findings when required.
+6. Producing a final plan.
+7. Splitting the final plan into independent tasks.
+8. Dispatching tasks to spawned agents.
+9. Giving each agent a complete self-contained prompt.
+10. Receiving final reports from agents.
+11. Checking reports for completeness, contradictions, and risk.
+12. Spawning audit/review agents whenever confidence in a worker result is below 95%.
+13. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
+14. Handling OFFTOP side requests ephemerally without polluting the durable task context.
+15. Creating follow-up tasks when work is incomplete or risky.
 
 ## Worker Prompt Requirements
 

@@ -16,6 +16,8 @@ When coordinating Craft Agent sessions, follow the `craft-agent-workflow` conven
 - Ask for a project root only when the task targets a different directory or worktree.
 - Inspect `CLAUDE.md`, `AGENTS.md`, package files, docs, and relevant source structure before planning.
 - Produce a detailed execution plan before spawning workers.
+- Assign a task complexity score from 1 to 5 and justify it in the plan.
+- Run the required complexity-based plan audit gate before spawning executor workers.
 - Split work into independent executor tasks that can run in parallel.
 - Describe dependencies clearly when tasks cannot run independently.
 - Ask for approval before spawning worker sessions unless the user explicitly asked to create, spawn, launch, or send agents.
@@ -88,6 +90,92 @@ Peer orchestrator prompt requirements:
 - Include this exact instruction: "If this task may interfere or conflict with the current active tasks, work in a new worktree."
 - Include this exact instruction: "If this task is new but can be done without interfering with current active agents, update your own plan and dispatch agents as needed."
 - Require it to follow `craft-agent-workflow` naming, labels, statuses, worktree, and audit rules.
+
+## Planning Complexity and Plan Audit Gate
+
+Before spawning executor workers, assess the task complexity yourself and run the required plan audit workflow.
+
+### Complexity Scale
+
+Every orchestrator plan must include:
+
+```text
+Complexity: <1-5>/5
+Reasoning: <short justification>
+```
+
+Use this scale:
+
+| Score | Meaning | Typical signs |
+|---|---|---|
+| `1` | Very simple | Localized, low-risk, one small change or clear investigation |
+| `2` | Simple | Bounded task, known pattern, limited files/modules, low ambiguity |
+| `3` | Moderate | Multiple files/modules, some ambiguity, integration concerns, meaningful testing needed |
+| `4` | Hard | Cross-module/system changes, migrations, infra/deploy risk, concurrency, external APIs, security/data risk |
+| `5` | Very hard | High ambiguity or high blast radius, architecture changes, critical security/data/destructive risk, many dependencies |
+
+### Mandatory Plan Audit Before Execution
+
+Do not spawn executor workers until the plan audit gate is complete and a final plan exists.
+
+For complexity `1` or `2`:
+
+1. Draft the plan.
+2. Spawn `1` plan-auditor agent.
+3. The auditor reviews the task and draft plan for inaccuracies, vulnerabilities, weak points, bad decisions, missing dependencies, unclear requirements, test gaps, and hidden risks.
+4. Incorporate accepted findings.
+5. Produce the final plan.
+6. Only then spawn executor workers if execution is requested/approved.
+
+For complexity `3` or higher, use two audit rounds:
+
+1. Draft the plan.
+2. Spawn plan-auditor agents based on complexity:
+   - Complexity `3`: `1` auditor
+   - Complexity `4`: `2` auditors
+   - Complexity `5`: `3` auditors
+3. Collect round-1 audit reports.
+4. Rewrite the plan using accepted audit findings.
+5. Run a second audit round using the same number of auditors.
+6. Collect round-2 audit reports.
+7. Produce the final plan using the last audit findings.
+8. Only then spawn executor workers if execution is requested/approved.
+
+If a plan audit finds blocking uncertainty that cannot be resolved from available context, ask the user or create a discovery task before executor implementation.
+
+### Plan Auditor Agents
+
+Plan auditors are audit agents, not implementation workers.
+
+Plan auditor session names should use the same worker/audit naming format:
+
+```text
+${tag} Plan Audit R<round>-<n>
+```
+
+Plan auditor prompts must include:
+
+- Orchestrator session ID.
+- Shared tag and project name.
+- Complexity score and justification.
+- Original user task.
+- Relevant project context.
+- Draft or revised plan to audit.
+- Explicit instruction not to implement code.
+- Review criteria: inaccuracies, vulnerabilities, weak points, bad decisions, missing dependencies, unclear requirements, file/worktree conflicts, test gaps, rollout/deploy risks, security/data risks, and over/under-scoping.
+
+Required plan auditor response format:
+
+```text
+Plan Audit Result:
+- Verdict: pass | needs-changes | blocked
+- Critical findings:
+- Major findings:
+- Minor findings:
+- Missing context/questions:
+- Recommended plan changes:
+- Confidence in plan after changes:
+```
 
 ## Orchestrator Session Naming
 
