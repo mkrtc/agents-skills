@@ -109,6 +109,18 @@ project::Servarium Backend
 project::TEST frontend
 ```
 
+### Orchestrator Label
+
+Use:
+
+```text
+orchestrator
+```
+
+This is an optional user-managed label for orchestrator sessions. Do not require agents to set it automatically unless the user explicitly asks.
+
+Do not use `orchestrator` on spawned executor, audit, review, or plan-auditor agents; those use `subagent`.
+
 ### Subagent Label
 
 Use:

@@ -85,6 +85,14 @@
       "valueType": "string"
     },
     {
+      "id": "orchestrator",
+      "name": "Orchestrator",
+      "color": {
+        "light": "#9333EA",
+        "dark": "#C084FC"
+      }
+    },
+    {
       "id": "subagent",
       "name": "Subagent",
       "color": {

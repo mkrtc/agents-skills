@@ -52,6 +52,14 @@ worktree::test-fe-auth
 
 Use on every session that belongs to a project/workstream.
 
+### `orchestrator`
+
+Optional user-managed label for orchestrator sessions.
+
+Use when you want to visually mark a session as an orchestrator. Agents do not need to set this automatically unless explicitly instructed.
+
+Do not use `orchestrator` on spawned executor/audit/plan-auditor agents; those use `subagent`.
+
 ### `subagent`
 
 Every non-orchestrator agent spawned by an orchestrator must have this label.
