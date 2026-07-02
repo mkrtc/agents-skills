@@ -232,8 +232,10 @@ When the final plan contains independent executor tasks that do not depend on ea
 
 Default concurrency:
 
-- Target up to `5` concurrent spawned non-orchestrator agents by default.
-- If there are more than `5` independent tasks, dispatch them in waves.
+- Treat `5` concurrent spawned non-orchestrator agents as the default soft target, not a hard limit.
+- If there are more than `5` independent tasks, dispatch them in waves by default.
+- The orchestrator may exceed `5` concurrent agents when tasks are demonstrably independent, low-conflict, and resource-safe.
+- For `6+` concurrent agents, the orchestrator must explicitly justify why higher concurrency is safe.
 - Plan-auditor agents are governed by the plan-audit gate and can run in parallel within each audit round; they do not count against executor wave size.
 - Peer orchestrators are separate orchestration streams and do not count as executor agents.
 
