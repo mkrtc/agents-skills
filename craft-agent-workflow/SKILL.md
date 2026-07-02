@@ -427,6 +427,39 @@ Plan Audit Result:
 - Confidence in plan after changes:
 ```
 
+## Parallel Dispatch Rules
+
+The orchestrator should not launch independent tasks one-by-one by default.
+
+When the final plan contains independent executor tasks that do not depend on each other and do not touch the same files/worktree, dispatch them in parallel.
+
+Default concurrency:
+
+- Target up to `5` concurrent spawned non-orchestrator agents by default.
+- If there are more than `5` independent tasks, dispatch them in waves.
+- Plan-auditor agents are governed by the plan-audit gate and can run in parallel within each audit round; they do not count against executor wave size.
+- Peer orchestrators are separate orchestration streams and do not count as executor agents.
+
+Only serialize tasks when there is a concrete reason:
+
+- one task depends on another task's output;
+- tasks need a shared contract to be established first;
+- tasks write the same files/modules;
+- tasks use the same non-isolated worktree and may create merge conflicts;
+- tasks compete for an external resource, migration, deploy target, or environment;
+- user explicitly requested sequential execution.
+
+Every executor task in the final plan should declare:
+
+```text
+Parallel group: <A/B/C/...>
+Can run with: <task ids/titles>
+Must wait for: <task ids/titles or None>
+File/worktree conflict risk: low | medium | high + reason
+```
+
+If multiple tasks are independent and fit under the concurrency target, spawn all of them before waiting for reports. Then collect reports for that wave, reconcile findings, and dispatch the next wave if needed.
+
 ## Orchestrator Responsibilities
 
 The orchestrator must not implement product/source changes directly.
@@ -440,14 +473,15 @@ The orchestrator is responsible for:
 5. Rewriting the plan based on audit findings when required.
 6. Producing a final plan.
 7. Splitting the final plan into independent tasks.
-8. Dispatching tasks to spawned agents.
-9. Giving each agent a complete self-contained prompt.
-10. Receiving final reports from agents.
-11. Checking reports for completeness, contradictions, and risk.
-12. Spawning audit/review agents whenever confidence in a worker result is below 95%.
-13. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
-14. Handling OFFTOP side requests ephemerally without polluting the durable task context.
-15. Creating follow-up tasks when work is incomplete or risky.
+8. Assigning parallel groups, dependencies, and file/worktree conflict risk for each task.
+9. Dispatching independent tasks in parallel by default, up to the configured/default concurrency target.
+10. Giving each agent a complete self-contained prompt.
+11. Receiving final reports from agents.
+12. Checking reports for completeness, contradictions, and risk.
+13. Spawning audit/review agents whenever confidence in a worker result is below 95%.
+14. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
+15. Handling OFFTOP side requests ephemerally without polluting the durable task context.
+16. Creating follow-up tasks when work is incomplete or risky.
 
 ## Worker Prompt Requirements
 
@@ -462,6 +496,7 @@ Every spawned worker prompt must include:
 - The task title and objective.
 - The exact implementation scope.
 - Explicit out-of-scope items.
+- Parallel group, tasks it can run with, tasks it must wait for, and file/worktree conflict risk.
 - Acceptance criteria.
 - Verification commands or manual checks.
 - Required final report format.

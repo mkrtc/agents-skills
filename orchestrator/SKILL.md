@@ -19,6 +19,7 @@ When coordinating Craft Agent sessions, follow the `craft-agent-workflow` conven
 - Assign a task complexity score from 1 to 5 and justify it in the plan.
 - Run the required complexity-based plan audit gate before spawning executor workers.
 - Split work into independent executor tasks that can run in parallel.
+- Dispatch independent tasks in parallel by default; do not serialize independent work without a concrete reason.
 - Describe dependencies clearly when tasks cannot run independently.
 - Ask for approval before spawning worker sessions unless the user explicitly asked to create, spawn, launch, or send agents.
 - Use read-only exploration for planning. Do not edit project files during orchestration unless explicitly authorized.
@@ -215,9 +216,46 @@ Each executor task must include:
 - Acceptance criteria
 - Verification commands
 - Constraints, risks, and dependencies
+- Parallel group identifier
+- Can run in parallel with
+- Must wait for
+- File/worktree conflict risk
 - Final report requirements
 
 Executor prompts must be self-contained. A worker must be able to complete the task without reading the orchestration chat.
+
+## Parallel Dispatch Rules
+
+Do not launch independent tasks one-by-one by default.
+
+When the final plan contains independent executor tasks that do not depend on each other and do not touch the same files/worktree, dispatch them in parallel.
+
+Default concurrency:
+
+- Target up to `5` concurrent spawned non-orchestrator agents by default.
+- If there are more than `5` independent tasks, dispatch them in waves.
+- Plan-auditor agents are governed by the plan-audit gate and can run in parallel within each audit round; they do not count against executor wave size.
+- Peer orchestrators are separate orchestration streams and do not count as executor agents.
+
+Only serialize tasks when there is a concrete reason:
+
+- one task depends on another task's output;
+- tasks need a shared contract to be established first;
+- tasks write the same files/modules;
+- tasks use the same non-isolated worktree and may create merge conflicts;
+- tasks compete for an external resource, migration, deploy target, or environment;
+- user explicitly requested sequential execution.
+
+Every executor task in the plan must declare:
+
+```text
+Parallel group: <A/B/C/...>
+Can run with: <task ids/titles>
+Must wait for: <task ids/titles or None>
+File/worktree conflict risk: low | medium | high + reason
+```
+
+If multiple tasks are independent and fit under the concurrency target, spawn all of them before waiting for reports. Then collect reports for that wave, reconcile findings, and dispatch the next wave if needed.
 
 ## Spawning Craft Agent Sessions
 

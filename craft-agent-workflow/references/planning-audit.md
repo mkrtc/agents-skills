@@ -90,6 +90,8 @@ Include:
   - missing dependencies;
   - unclear requirements;
   - file/worktree conflicts;
+  - missing parallel groups/dependencies;
+  - unnecessary serialization of independent tasks;
   - test gaps;
   - rollout/deploy risks;
   - security/data risks;
