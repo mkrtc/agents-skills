@@ -29,6 +29,45 @@ When coordinating Craft Agent sessions, follow the `craft-agent-workflow` conven
 - Handle messages prefixed with `OFFTOP`/aliases as ephemeral side checks yourself, without polluting the durable plan or worker context.
 - When a new task arrives while workers are still running, decide whether to merge it into the current plan or spawn a peer orchestrator.
 
+## Kanban Task Board Mode / Task Tools
+
+Use Kanban Task Board Mode when the user asks to coordinate work through task specs, task boards, or the agent-facing task tools instead of manually spawning every session.
+
+MVP task tools available to agents:
+
+- Read-only tools: `task_validate`, `task_get`, `task_list`, and `task_get_results`.
+- Side-effecting tools: `task_create` and `task_run`.
+- `task_generate` is not an agent-facing MVP tool; do not plan around workers using it directly.
+
+Safe orchestration workflow:
+
+1. Draft or inspect the task spec and run `task_validate` before side-effecting operations whenever practical.
+2. Use `task_create` to create/adopt a Kanban task for the current caller session by default. Do not assume arbitrary cross-session ownership unless the app explicitly exposes and validates that advanced behavior.
+3. Use `task_run` when execution should be launched from the board. It defaults the verifier/orchestrator to the current caller session.
+4. Use `task_get`, `task_list`, and `task_get_results` for inspection, progress checks, and final result collection.
+5. Treat `task_create` and `task_run` as side-effecting actions because they can write task state, spawn sessions, and change statuses.
+
+Model/connection selection in Kanban task specs:
+
+- Assess each subtask's complexity, type, and risk before choosing model fields.
+- Use the Craft tool surface / available model and connection metadata, e.g. `spawn_session` help where available. Do not guess from stale memory or hardcode fixed provider/model recommendations.
+- When web/current benchmark access is available and relevant, you may consult public benchmark/recommender sources. For coding/agentic task model selection, prefer the optional [Artificial Analysis Coding Agent Index](https://artificialanalysis.ai/agents/coding-agents) reference to compare available models by capability, coding/agentic strength, speed, cost/time per task, and domain fit.
+- External benchmark sources are optional references, not hard dependencies. First map any recommendation back to configured Craft models/connections.
+- If web/current benchmark access is unavailable, does not map clearly, or reliable model discovery is unavailable, fall back to Craft tool-surface metadata; if still uncertain, omit `model`/`llmConnection` and let runtime defaults apply.
+- Use `defaults.model` and `defaults.llmConnection` for the common task default; use node-level `model` and `llmConnection` only for meaningful deviations.
+- When selecting a specific non-default model, include the matching `llmConnection` with `model`; otherwise leave both omitted/defaulted.
+- Simple or mechanical nodes should use the fastest/cheapest sufficiently capable available option. Moderate implementation should use a balanced capable option. Complex architecture, security, concurrency, audit, or other high-risk nodes should use the strongest or most specialized available option.
+- If multiple strong options are available, choose based on domain fit, context window, coding/review strength, latency/cost, and project/provider suitability.
+- Do not spend premium/slow models on simple nodes without a concrete reason.
+
+Skills in Kanban task specs:
+
+- Task specs support task-level `skills?: string[]` and node-level `skills?: string[]`.
+- Effective child skills are ordered and de-duplicated with task-level skills first, then node-level skills.
+- Use skill slugs only; validate/normalize inputs before placing them in a spec.
+- Do not raw-inject full skill markdown into hidden prompts.
+- Preserve the explicit user-facing bracketed skill invocation syntax such as `[skill:slug]`; do not change or remove it when users or specs intentionally include it.
+
 ## OFFTOP / Ephemeral Requests
 
 If a user message starts with an OFFTOP marker, handle it directly as an ephemeral side request.
@@ -339,10 +378,12 @@ Finalization mapping for workers:
 
 | Outcome | Required label update | Required Craft session status | Required report behavior |
 |---|---|---|---|
-| Success | replace old `status::...` with `status::done` | `done` | final report and output to orchestrator |
+| Success | replace old `status::...` with `status::done` | `needs-review` | final report and output to orchestrator |
 | Blocked | replace old `status::...` with `status::blocked` | `needs-review` | explain blocker and what is needed |
 | Error | replace old `status::...` with `status::error` | `needs-review` | explain error, failed command/tool, and recovery hint |
-| Cancelled | replace old `status::...` with `status::cancelled` | `cancelled` | explain cancellation reason |
+| Cancelled | replace old `status::...` with `status::cancelled` | `needs-review` | explain cancellation reason |
+
+Closed Craft session statuses such as `done` and `cancelled` are user-owned board decisions; worker prompts should instruct agents to hand off with `needs-review` while using `status::done`, `status::blocked`, `status::error`, or `status::cancelled` labels for the detailed outcome.
 
 Git readiness, if applicable:
 

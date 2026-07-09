@@ -17,6 +17,45 @@ Use this skill when coordinating Craft Agent sessions, naming orchestrators/work
 - Labels are combinable metadata. Use valued labels for stateful dimensions instead of many mutually exclusive boolean labels.
 - Preserve existing labels when changing a single label dimension such as `status::...`, `git::...`, or `worktree::...`.
 
+## Kanban Task Board Mode
+
+Use Kanban Task Board Mode for board-backed orchestration when the user wants work represented as task specs/nodes and coordinated through the app's task tools.
+
+Agent-facing MVP task tools:
+
+- `task_validate` — read-only validation/preflight for task specs.
+- `task_create` — side-effecting creation/adoption of a task; by default it binds/adopts the current caller session.
+- `task_run` — side-effecting execution launch; by default it uses the current caller session as verifier/orchestrator.
+- `task_get`, `task_list`, `task_get_results` — read-only inspection/result tools.
+- `task_generate` is not part of the agent-facing MVP tool set.
+
+Workflow rules:
+
+1. Prefer `task_validate` before `task_create` or `task_run`.
+2. Treat `task_create` and `task_run` as side-effecting because they can persist task state, spawn agents, and update statuses.
+3. Use read-only tools (`task_validate`, `task_get`, `task_list`, `task_get_results`) for exploration, review, and result collection.
+4. Do not assume arbitrary cross-session ownership; rely on the current-session defaults unless an explicit advanced app contract exists.
+
+Model/connection selection in task specs:
+
+- Assess each subtask's complexity, type, and risk before choosing model fields.
+- Use the Craft tool surface / available model and connection metadata, e.g. `spawn_session` help where available. Do not guess from stale memory or hardcode fixed provider/model recommendations.
+- When web/current benchmark access is available and relevant, you may consult public benchmark/recommender sources. For coding/agentic task model selection, prefer the optional [Artificial Analysis Coding Agent Index](https://artificialanalysis.ai/agents/coding-agents) reference to compare available models by capability, coding/agentic strength, speed, cost/time per task, and domain fit.
+- External benchmark sources are optional references, not hard dependencies. First map any recommendation back to configured Craft models/connections.
+- If web/current benchmark access is unavailable, does not map clearly, or reliable model discovery is unavailable, fall back to Craft tool-surface metadata; if still uncertain, omit `model`/`llmConnection` and let runtime defaults apply.
+- Use `defaults.model` and `defaults.llmConnection` for the common task default; use node-level `model` and `llmConnection` only for meaningful deviations.
+- When selecting a specific non-default model, include the matching `llmConnection` with `model`; otherwise leave both omitted/defaulted.
+- Simple or mechanical nodes should use the fastest/cheapest sufficiently capable available option. Moderate implementation should use a balanced capable option. Complex architecture, security, concurrency, audit, or other high-risk nodes should use the strongest or most specialized available option.
+- If multiple strong options are available, choose based on domain fit, context window, coding/review strength, latency/cost, and project/provider suitability.
+- Do not spend premium/slow models on simple nodes without a concrete reason.
+
+Skills in task specs:
+
+- A task spec can define task-level `skills?: string[]` and each node can define node-level `skills?: string[]`.
+- Effective child skills are ordered/de-duped with task-level skills first, then node-level skills.
+- Keep values as skill slugs; do not raw-inject full skill markdown into hidden prompts.
+- Preserve the app's existing user-facing bracketed skill invocation syntax (`[skill:slug]`) when it appears in prompts or user instructions.
+
 ## Session Naming
 
 ### Orchestrator Sessions
@@ -256,17 +295,17 @@ Safe procedure:
 
 Craft session status is a lifecycle bucket such as `todo`, `needs-review`, `done`, or `cancelled`.
 
-Labels are richer metadata.
+Labels are richer metadata. Closed Craft session statuses such as `done` and `cancelled` are user-owned board decisions; agents should hand completed/cancelled/error states back with `needs-review` and use `status::...` labels for the detailed outcome.
 
 Worker status transition rules:
 
 | Worker condition | Required label transition | Required Craft session status |
 |---|---|---|
 | Work starts / is actively running | replace old `status::...` with `status::in-progress` | keep/open as `todo` unless already set by orchestrator |
-| Work completed successfully | replace `status::in-progress` with `status::done` | `done` |
+| Work completed successfully | replace `status::in-progress` with `status::done` | `needs-review` |
 | Worker is blocked by missing info/dependency/access | replace `status::in-progress` with `status::blocked` | `needs-review` |
 | Worker hit an execution/tool/runtime error | replace `status::in-progress` with `status::error` | `needs-review` |
-| Work was cancelled | replace `status::in-progress` with `status::cancelled` | `cancelled` |
+| Work was cancelled | replace `status::in-progress` with `status::cancelled` | `needs-review` |
 
 Additional rules:
 
@@ -537,10 +576,10 @@ Final state mapping:
 
 | Outcome | Required label update | Required Craft session status | Required report behavior |
 |---|---|---|---|
-| Success | replace old `status::...` with `status::done` | `done` | provide final report and return/send output to orchestrator |
+| Success | replace old `status::...` with `status::done` | `needs-review` | provide final report and return/send output to orchestrator |
 | Blocked | replace old `status::...` with `status::blocked` | `needs-review` | explain blocker and what is needed to continue |
 | Error | replace old `status::...` with `status::error` | `needs-review` | explain error, failed command/tool, and recovery hint |
-| Cancelled | replace old `status::...` with `status::cancelled` | `cancelled` | explain cancellation reason |
+| Cancelled | replace old `status::...` with `status::cancelled` | `needs-review` | explain cancellation reason |
 
 Implementation rules:
 
@@ -550,7 +589,7 @@ Implementation rules:
 4. Remove only old `status::...` labels.
 5. Preserve unrelated labels such as `project::...`, `subagent`, `git::...`, and `worktree::...`.
 6. Set exactly one final `status::...` label.
-7. Set Craft session status according to the mapping above.
+7. Set Craft session status according to the mapping above; do not move the session into closed statuses such as `done` or `cancelled` yourself.
 8. If Git readiness applies, set exactly one of:
    - `git::progress` if not ready to push;
    - `git::ready` if ready to push;
