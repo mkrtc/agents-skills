@@ -26,6 +26,9 @@ When coordinating Craft Agent sessions, follow the `craft-agent-workflow` conven
 - Receive and review worker reports before declaring the overall work complete.
 - If confidence in a worker result is below 95%, spawn a separate audit/review agent before accepting the result.
 - Every non-orchestrator agent you spawn (executor, worker, audit, review, plan-auditor) must have the `subagent` label.
+- Ensure this orchestrator session has the `orchestrator` label when coordinating other sessions; cross-session Craft status changes rely on that label.
+- Use `set_session_status` to keep workflow state accurate: you may set your own session to any configured status, including closed statuses like `done` or `cancelled`, and may update spawned/managed agents' Craft statuses when acting as their orchestrator.
+- Do not change another session's Craft status unless you are orchestrating that work.
 - Handle messages prefixed with `OFFTOP`/aliases as ephemeral side checks yourself, without polluting the durable plan or worker context.
 - When a new task arrives while workers are still running, decide whether to merge it into the current plan or spawn a peer orchestrator.
 
@@ -47,9 +50,10 @@ Safe orchestration workflow:
 4. Use `task_get`, `task_list`, and `task_get_results` for inspection, progress checks, and final result collection.
 5. Treat `task_create` and `task_run` as side-effecting actions because they can write task state, spawn sessions, and change statuses.
 
-Model/connection selection in Kanban task specs:
+Model/connection selection in Kanban task specs and spawned sessions:
 
 - Assess each subtask's complexity, type, and risk before choosing model fields.
+- Use different available models for different work types when it improves throughput or quality; do not default every worker to the same model if the task mix clearly benefits from specialization.
 - Use the Craft tool surface / available model and connection metadata, e.g. `spawn_session` help where available. Do not guess from stale memory or hardcode fixed provider/model recommendations.
 - When web/current benchmark access is available and relevant, you may consult public benchmark/recommender sources. For coding/agentic task model selection, prefer the optional [Artificial Analysis Coding Agent Index](https://artificialanalysis.ai/agents/coding-agents) reference to compare available models by capability, coding/agentic strength, speed, cost/time per task, and domain fit.
 - External benchmark sources are optional references, not hard dependencies. First map any recommendation back to configured Craft models/connections.
@@ -57,6 +61,9 @@ Model/connection selection in Kanban task specs:
 - Use `defaults.model` and `defaults.llmConnection` for the common task default; use node-level `model` and `llmConnection` only for meaningful deviations.
 - When selecting a specific non-default model, include the matching `llmConnection` with `model`; otherwise leave both omitted/defaulted.
 - Simple or mechanical nodes should use the fastest/cheapest sufficiently capable available option. Moderate implementation should use a balanced capable option. Complex architecture, security, concurrency, audit, or other high-risk nodes should use the strongest or most specialized available option.
+- For frontend, UI, visual design, component composition, responsive layout, CSS/Tailwind, and "make it look good" tasks, prefer available Claude models/connections when they are present in the Craft model list, because they tend to handle visual/frontend implementation well. Still verify availability with the tool surface and fall back to the best configured coding model if Claude is unavailable.
+- For backend, migrations, security review, concurrency, and data-integrity tasks, prioritize the strongest available reasoning/coding model over visual/UI specialization.
+- For plan-audit and review agents, prioritize models with strong reasoning, code review, and long-context performance; use benchmark references where helpful.
 - If multiple strong options are available, choose based on domain fit, context window, coding/review strength, latency/cost, and project/provider suitability.
 - Do not spend premium/slow models on simple nodes without a concrete reason.
 
@@ -383,7 +390,7 @@ Finalization mapping for workers:
 | Error | replace old `status::...` with `status::error` | `needs-review` | explain error, failed command/tool, and recovery hint |
 | Cancelled | replace old `status::...` with `status::cancelled` | `needs-review` | explain cancellation reason |
 
-Closed Craft session statuses such as `done` and `cancelled` are user-owned board decisions; worker prompts should instruct agents to hand off with `needs-review` while using `status::done`, `status::blocked`, `status::error`, or `status::cancelled` labels for the detailed outcome.
+Worker prompts may instruct agents to set their own Craft session status when appropriate. By default, workers should hand off with `needs-review` plus detailed `status::...` labels; the orchestrator may later set a managed worker's Craft status to `done` or `cancelled` after reviewing the outcome.
 
 Git readiness, if applicable:
 
