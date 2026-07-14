@@ -11,11 +11,24 @@ Use this skill when coordinating Craft Agent sessions, naming orchestrators/work
 
 - Keep orchestration and execution separate.
 - The orchestrator plans, scores task complexity from 1 to 5, runs the required plan audit gate, splits, dispatches, collects reports, and requests audits. It does not implement product/code changes itself.
-- Spawned workers execute one bounded task and report back to the orchestrator.
+- Spawned workers execute one bounded task and report back to the orchestrator. The `craft-agent-executor` skill is the canonical executor/worker lifecycle for implementation agents.
 - Peer orchestrators may be spawned for separate orchestration streams; they are not subagents.
 - `OFFTOP` requests are ephemeral side checks handled by the orchestrator directly; do not add them to the durable plan/task context.
 - Labels are combinable metadata. Use valued labels for stateful dimensions instead of many mutually exclusive boolean labels.
 - Preserve existing labels when changing a single label dimension such as `status::...`, `git::...`, or `worktree::...`.
+
+## Audit Priority and Triage Conventions
+
+Use this shared priority rubric for audit findings:
+
+- `P0` critical: breaks production, security, or a key scenario; fix immediately.
+- `P1` serious: materially affects users or functionality; fix in the nearest release.
+- `P2` normal: visible defect or technical debt, workaround exists; fix in planned work.
+- `P3` minor/improvement: cosmetic, readability, small optimization; fix opportunistically.
+
+Audit agents recommend priorities; orchestrators own final triage. Orchestrators must verify each audit finding against actual code, architecture, product scope, and requirements; reprioritize by real impact and likelihood; and downgrade weak, speculative, out-of-scope, low-impact, or non-release-blocking findings to `P3`. Remove `P3` from the final required-fix list only, preserving it in raw audit reports, history, and advisory notes. Accepted `P0`/`P1`/`P2` findings must be fixed, assigned, or explicitly deferred according to current scope and release policy before completion.
+
+Executor-scope guard: an audit finding, especially `P3`/advisory feedback, does not authorize executors to expand their assigned task. Executors fix only the issues the orchestrator explicitly accepts and assigns; `P3` follow-up requires a separate orchestrator assignment.
 
 ## Kanban Task Board Mode
 
@@ -55,6 +68,8 @@ Skills in task specs:
 - Effective child skills are ordered/de-duped with task-level skills first, then node-level skills.
 - Keep values as skill slugs; do not raw-inject full skill markdown into hidden prompts.
 - Preserve the app's existing user-facing bracketed skill invocation syntax (`[skill:slug]`) when it appears in prompts or user instructions.
+- Executor/implementation nodes should include `skills: ["craft-agent-executor"]` where appropriate, unless task-level skills already guarantee that skill is active.
+- Do not apply executor skills to audit/review-only nodes; those roles remain separate concerns.
 
 ## Session Naming
 
@@ -302,10 +317,10 @@ Worker status transition rules:
 | Worker condition | Required label transition | Required Craft session status |
 |---|---|---|
 | Work starts / is actively running | replace old `status::...` with `status::in-progress` | keep/open as `todo` unless already set by orchestrator |
-| Work completed successfully | replace `status::in-progress` with `status::done` | `needs-review` |
-| Worker is blocked by missing info/dependency/access | replace `status::in-progress` with `status::blocked` | `needs-review` |
-| Worker hit an execution/tool/runtime error | replace `status::in-progress` with `status::error` | `needs-review` |
-| Work was cancelled | replace `status::in-progress` with `status::cancelled` | `needs-review` |
+| Work completed successfully | replace old `status::...` with `status::done` | `needs-review` by default |
+| Worker is blocked by missing info/dependency/access | replace old `status::...` with `status::blocked` | `needs-review` |
+| Worker hit an execution/tool/runtime error | replace old `status::...` with `status::error` | `needs-review` |
+| Work was cancelled | replace old `status::...` with `status::cancelled` | `needs-review` |
 
 Additional rules:
 
@@ -313,6 +328,7 @@ Additional rules:
 - The worker agent is responsible for updating its own labels and Craft session status at the end of its task.
 - The worker must preserve unrelated labels such as `project::...`, `subagent`, `git::...`, and `worktree::...`.
 - The worker must not leave itself in `status::in-progress` after it has finished, blocked, errored, or cancelled.
+- Default worker handoff is Craft session status `needs-review`. The only exception is explicit executor auto-close mode with the exact phrase `auto-close on success: true`, and only after verified success; it never applies to blocked/error/cancelled outcomes or audit/review agents.
 - Orchestrators awaiting review can use label `status::review` and Craft session status `needs-review`.
 
 ## OFFTOP / Ephemeral Requests
@@ -452,6 +468,7 @@ Plan auditor prompts must include:
 - Draft or revised plan to audit.
 - Explicit instruction not to implement code.
 - Review criteria: inaccuracies, vulnerabilities, weak points, bad decisions, missing dependencies, unclear requirements, file/worktree conflicts, test gaps, rollout/deploy risks, security/data risks, and over/under-scoping.
+- Required finding detail: prioritized findings using `[P0]`, `[P1]`, `[P2]`, or `[P3]`, with evidence, impact, likelihood, and recommendation for every actionable finding.
 
 Required plan auditor response format:
 
@@ -526,6 +543,15 @@ The orchestrator is responsible for:
 
 ## Worker Prompt Requirements
 
+Executor/implementation worker prompts should use `craft-agent-executor` as the canonical lifecycle behavior. Manual executor prompts must include `[skill:craft-agent-executor]`, or the spawn/task mechanism must otherwise guarantee the skill is loaded before work begins. Because global skills affect future sessions broadly, keep worker prompts explicit about critical invariants even when referencing the skill.
+
+Permission-mode expectations:
+
+- Executor/implementation workers default to Execute / `allow-all` when supported, because they usually need to edit files, run verification, update labels/status, and report back.
+- Plan auditors, review-only agents, and discovery-only agents may use safe/explore/read-only modes when appropriate.
+- Explore-mode agents may be unable to update labels/status or send cross-session messages depending on runtime restrictions; orchestrators should inspect session artifacts/messages when reports are missing.
+- Every spawned non-orchestrator agent must receive explicit final reporting instructions and the orchestrator session ID.
+
 Every spawned worker prompt must include:
 
 - The orchestrator session ID.
@@ -589,13 +615,14 @@ Implementation rules:
 4. Remove only old `status::...` labels.
 5. Preserve unrelated labels such as `project::...`, `subagent`, `git::...`, and `worktree::...`.
 6. Set exactly one final `status::...` label.
-7. Set Craft session status according to the mapping above; do not move the session into closed statuses such as `done` or `cancelled` yourself.
-8. If Git readiness applies, set exactly one of:
+7. Set Craft session status according to the mapping above; do not move the session into closed statuses such as `done` or `cancelled` yourself by default.
+8. Auto-close mode is explicit and opt-in only: if and only if an executor prompt contains the canonical phrase `auto-close on success: true`, the executor may set Craft session status to `done` instead of `needs-review` after all acceptance criteria and verification pass. Auto-close never applies to blocked/error/cancelled outcomes and never applies to audit/review agents.
+9. If Git readiness applies, set exactly one of:
    - `git::progress` if not ready to push;
    - `git::ready` if ready to push;
    - `git::pushed` if already pushed.
-9. Return/send the final output to the orchestrator session.
-10. If label/status update fails, mention that explicitly in the final report.
+10. Return/send the final output to the orchestrator session.
+11. If label/status update fails or cross-session reporting fails, mention that explicitly in the final report.
 
 ## Worker Final Report Format
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Executor worker task icon</title>
+  <desc id="desc">A compact gear with a terminal prompt and checkmark, representing a worker executing a task successfully.</desc>
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <path stroke-width="4" d="M32 7v7m0 36v7M14 32H7m50 0h-7M19.3 19.3l-5-5m35.4 35.4-5-5m0-25.4 5-5M14.3 49.7l5-5" opacity="0.55"/>
+    <circle cx="32" cy="32" r="19" stroke-width="4"/>
+    <rect x="18" y="22" width="28" height="20" rx="4" stroke-width="3"/>
+    <path stroke-width="3" d="m24 29 4 3-4 3"/>
+    <path stroke-width="3" d="M32 36h5"/>
+  </g>
+  <path d="m28 45 6 6 13-15" fill="none" stroke="#22c55e" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
