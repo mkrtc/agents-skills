@@ -63,6 +63,8 @@ Audit agents do not use executor auto-close behavior.
 
 Send the report to the orchestrator session ID via `send_agent_message` when available. If delivery fails, state that explicitly.
 
+Report an evidence-based numeric confidence from 0–100%. Base it on evidence reviewed, verification completed, missing context, and residual risk; do not inflate it.
+
 Use this format:
 
 ```text
@@ -75,7 +77,8 @@ Audit Result:
 - Minor findings:
 - Residual risks / missing context:
 - Labels/status set:
-- Confidence:
+- Confidence: <0–100>%
+- Confidence rationale:
 ```
 
 Every actionable finding must include priority, evidence, impact, likelihood, and recommendation.

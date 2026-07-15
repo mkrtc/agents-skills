@@ -57,6 +57,8 @@ Never leave `status::in-progress` at finish. Preserve unrelated labels and repla
 
 Send the report to the orchestrator session ID via `send_agent_message` when available. If delivery fails, state that explicitly.
 
+Report an evidence-based numeric confidence from 0–100%. Base it on product-context coverage, inspected artifacts, state/accessibility coverage, open questions, and validation performed; do not inflate it.
+
 Use this format:
 
 ```text
@@ -70,4 +72,6 @@ Design Result:
 - Acceptance criteria / engineering handoff:
 - Labels/status set:
 - Open questions / risks:
+- Confidence: <0–100>%
+- Confidence rationale:
 ```

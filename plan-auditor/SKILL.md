@@ -72,9 +72,10 @@ Plan Audit Result:
 - Minor findings:
 - Missing context/questions:
 - Recommended plan changes:
-- Confidence in plan after changes:
+- Confidence in plan after changes: <0–100>%
+- Confidence rationale:
 ```
 
-Use `pass` only when the plan is safe enough to execute after any minor notes. Use `needs-changes` when the orchestrator should revise the plan before executor dispatch. Use `blocked` when missing information or a hard conflict prevents a safe plan.
+Report numeric confidence based on context coverage, evidence, unresolved assumptions, and residual risk; do not inflate it. Use `pass` only when the plan is safe enough to execute after any minor notes. Use `needs-changes` when the orchestrator should revise the plan before executor dispatch. Use `blocked` when missing information or a hard conflict prevents a safe plan.
 
 Within `Critical findings`, `Major findings`, and `Minor findings`, each actionable bullet must preserve the top-level format and include: `[P0|P1|P2|P3]`, evidence, impact, likelihood, and recommendation. Keep factual findings separate from hypotheses.

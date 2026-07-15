@@ -486,7 +486,8 @@ Plan Audit Result:
 - Minor findings:
 - Missing context/questions:
 - Recommended plan changes:
-- Confidence in plan after changes:
+- Confidence in plan after changes: <0–100>%
+- Confidence rationale:
 ```
 
 ## Parallel Dispatch Rules
@@ -542,7 +543,7 @@ The orchestrator is responsible for:
 10. Giving each agent a complete self-contained prompt.
 11. Receiving final reports from agents.
 12. Checking reports for completeness, contradictions, and risk.
-13. Spawning audit/review agents whenever confidence in a worker result is below 95%.
+13. Requiring every worker to report `Confidence: <0–100>%` and spawning an audit/review agent whenever worker-reported or orchestrator-assessed confidence is below 85%.
 14. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
 15. Handling OFFTOP side requests ephemerally without polluting the durable task context.
 16. Creating follow-up tasks when work is incomplete or risky.
@@ -647,11 +648,13 @@ Result:
 - Worktree:
 - Blockers:
 - Follow-up needed:
+- Confidence: <0–100>%
+- Confidence rationale:
 ```
 
 ## Audit Rule
 
-If the orchestrator has less than 95% confidence that a worker completed the task correctly, it must spawn a separate audit/review agent.
+Every worker must report `Confidence: <0–100>%` with a short rationale grounded in completed verification, remaining uncertainty, and known risks. If worker-reported confidence or the orchestrator's independent assessed confidence is below 85%, the orchestrator must spawn a separate audit/review agent. Confidence does not override evidence: missing verification, contradictions, or material high-risk uncertainty may require an audit at any percentage.
 
 Audit agents should:
 

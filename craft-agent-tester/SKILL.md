@@ -64,6 +64,8 @@ Test agents do not use executor auto-close behavior unless explicitly converted 
 
 Send the report to the orchestrator session ID via `send_agent_message` when available. If delivery fails, state that explicitly.
 
+Report an evidence-based numeric confidence from 0–100%. Base it on executed coverage, environment fidelity, reproducibility, checks not run, and residual regression risk; do not inflate it.
+
 Use this format:
 
 ```text
@@ -77,4 +79,6 @@ Test Result:
 - Regression risk:
 - Labels/status set:
 - Recommended follow-up:
+- Confidence: <0–100>%
+- Confidence rationale:
 ```

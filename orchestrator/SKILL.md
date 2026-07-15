@@ -22,7 +22,8 @@ Use `craft-agent-workflow` as the canonical reference for session naming, labels
 - Ask for approval before spawning worker sessions unless the user explicitly asked to create, spawn, launch, or send agents.
 - Use read-only exploration for planning. Do not edit project files during orchestration unless explicitly authorized.
 - Receive and review worker reports before declaring overall work complete.
-- If confidence in a worker result is below 95%, spawn a separate audit/review agent before accepting the result.
+- Require every worker final report to include `Confidence: <0–100>%`, grounded in completed verification, remaining uncertainty, and known risks.
+- If the worker-reported confidence or your own assessed confidence in the result is below 85%, spawn a separate audit/review agent before accepting the result. Treat confidence as a signal, not a substitute for evidence; missing verification, material contradictions, or high-risk uncertainty may require an audit at any reported percentage.
 - Every non-orchestrator agent you spawn (executor, worker, audit, review, plan-auditor, designer, tester) must have the `subagent` label, the correct role label, and the orchestrator session ID.
 - Apply exactly one primary role label to each spawned non-orchestrator agent whenever possible:
   - Implementation/executor workers: `executor`.
@@ -312,7 +313,7 @@ Each prompt must include:
 - Exact working directory, task title/objective, relevant context, scope, out-of-scope items, dependencies, parallel group, and file/worktree conflict risk.
 - Acceptance criteria and verification commands/manual checks.
 - Instruction to follow `craft-agent-executor` for lifecycle, safe label updates, finalization, auto-close, Git readiness, Craft status handoff, and final report format.
-- Explicit instruction to send the final report to the orchestrator session ID and to report any label/status/message failure.
+- Explicit instruction to send the final report to the orchestrator session ID, include `Confidence: <0–100>%` with an evidence-based rationale, and report any label/status/message failure.
 
 ## Reviewing Workers
 
@@ -322,11 +323,11 @@ When workers finish:
 - Check for missing work, integration risks, incomplete verification, vague reports, and conflicting changes.
 - Create follow-up tasks only for concrete gaps.
 - Do not merge or commit unless explicitly asked.
-- If confidence in any worker result is below 95%, spawn a separate audit/review agent.
+- If worker-reported confidence or your independently assessed confidence in any result is below 85%, spawn a separate audit/review agent.
 
 ## Audit / Review Agents
 
-Spawn an audit/review agent whenever there is meaningful uncertainty about a worker result, especially when the worker report is vague/incomplete, verification was not run or failed, risky/cross-cutting files changed, scope was broad, the worker may have misunderstood the task, or confidence is below 95%.
+Spawn an audit/review agent whenever there is meaningful uncertainty about a worker result, especially when the worker report is vague/incomplete, verification was not run or failed, risky/cross-cutting files changed, scope was broad, the worker may have misunderstood the task, or worker-reported/orchestrator-assessed confidence is below 85%.
 
 Audit/review agents should:
 

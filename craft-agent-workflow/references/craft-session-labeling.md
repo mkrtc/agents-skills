@@ -151,7 +151,7 @@ When the worker finishes, it must not leave itself as `status::in-progress`.
 | Error | replace old `status::...` with `status::error` | `needs-review` |
 | Cancelled | replace old `status::...` with `status::cancelled` | `needs-review` |
 
-The spawned agent updates its own labels and Craft session status at the end of its task, preserving unrelated labels.
+The spawned agent updates its own labels and Craft session status at the end of its task, preserving unrelated labels. Every final worker report must include `Confidence: <0–100>%` and a short evidence-based rationale covering verification, remaining uncertainty, and known risks.
 
 ## Removed legacy labels
 

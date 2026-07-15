@@ -108,11 +108,12 @@ Plan Audit Result:
 - Minor findings:
 - Missing context/questions:
 - Recommended plan changes:
-- Confidence in plan after changes:
+- Confidence in plan after changes: <0–100>%
+- Confidence rationale:
 ```
 
 ## Distinction from result audits
 
 This protocol audits the plan before executor workers start.
 
-It is separate from the existing rule that requires a result audit when the orchestrator has less than 95% confidence in a completed worker result.
+It is separate from the result-audit rule: every worker reports evidence-based numeric confidence, and a separate result audit is required when worker-reported or orchestrator-assessed confidence is below 85%. Missing verification, contradictions, or material high-risk uncertainty may still require an audit at any percentage.

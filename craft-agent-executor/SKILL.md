@@ -100,6 +100,8 @@ When an orchestrator session ID is provided, send the final report to that sessi
 
 If `send_agent_message` fails or the tool is unavailable, mention that clearly in your final response so the orchestrator/user can recover by inspecting the session.
 
+Report an evidence-based numeric confidence from 0–100%. Base it on completed verification, acceptance-criteria coverage, unresolved uncertainty, and known risks; do not inflate it to avoid an audit.
+
 Use this exact final report format:
 
 ```text
@@ -112,4 +114,6 @@ Result:
 - Worktree:
 - Blockers:
 - Follow-up needed:
+- Confidence: <0–100>%
+- Confidence rationale:
 ```
