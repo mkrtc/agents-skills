@@ -39,11 +39,11 @@ Draft, audit round 1, revise, audit round 2, then produce the final plan before 
 
 ## Plan-auditor role
 
-Plan auditors are audit-only workers. They load `craft-agent-auditor` and `plan-auditor`, carry `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and any worktree label, and must not implement, commit, or push. Any implementation needed by a plan review goes to a separate `executor` session loading `craft-agent-executor` and labeled `executor`.
+Plan auditors are audit-only workers. They load `craft-agent-auditor` and `plan-auditor`, carry `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and any worktree label, and must not implement, commit, or push. They report implementation needs to the orchestrator. A separate `executor` session loading `craft-agent-executor` and labeled `executor` may be created only when the work is already within approved scope or after the user explicitly approves scope expansion.
 
 Recommended name: `${tag} Plan Audit R<round>-<n>`.
 
-Prompts include the orchestrator ID, tag/project/worktree, complexity and reasoning, original task/context, plan, no-implementation instruction, and review criteria spanning assumptions, security, dependencies, conflicts, parallelism, verification, rollout, and scope.
+Prompts include the orchestrator ID, tag/project/worktree, complexity and reasoning, original task/context, plan, no-implementation instruction, and review criteria spanning assumptions, security, dependencies, conflicts, parallelism, verification, rollout, and scope. Plan auditors apply the canonical `craft-agent-workflow` scope-authority scenarios and reject silent out-of-scope fixes or severity-based authority expansion.
 
 ## Required plan-auditor response
 

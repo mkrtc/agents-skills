@@ -19,18 +19,41 @@ Use this skill when coordinating Craft Agent sessions, naming orchestrators/work
 - Labels are combinable metadata. Use valued labels for stateful dimensions instead of many mutually exclusive boolean labels.
 - Preserve existing labels when changing a single label dimension such as `status::...`, `git::...`, or `worktree::...`.
 
+## Scope Authority
+
+Approved task scope is the explicit objective, acceptance criteria, named boundaries, and changes directly necessary to satisfy them. Agents in implementation-capable roles may make ordinary implementation choices and directly necessary edits within those boundaries without asking for permission again; this does not override read-only role restrictions.
+
+- Never make changes outside the approved task scope without explicit user permission. Unexpected adjacent issues and out-of-scope audit/test findings are report-only until the user explicitly expands scope.
+- Severity does not expand authority. `P0`, `P1`, security, data-loss, production, or other critical impact changes urgency and reporting priority, never implementation permission.
+- Orchestrators may triage, reprioritize, and recommend out-of-scope findings, but must ask the user and receive explicit approval before adding a fix to a plan, task, or worker prompt.
+- Child agents must stop and report an out-of-scope finding to the orchestrator rather than self-expanding scope. Executors and designers must not modify out-of-scope artifacts. Auditors and testers remain read-only/report-only.
+- If immediate harm is actively occurring, any involved role may take only the actions strictly necessary to stop or cancel the harmful operation and preserve state/evidence. It must then report and request approval; this containment exception does not authorize a repair or any other change.
+
+### Scope-Authority Validation Scenarios
+
+Use these cases when drafting, executing, testing, or auditing workflow instructions:
+
+1. An executor may make an ordinary implementation choice or directly necessary edit within the approved objective and acceptance criteria without another permission request.
+2. An unexpected adjacent defect is reported without edits or silent plan expansion.
+3. An adjacent `P0`, security, or data-loss defect has the same authority outcome as case 2; severity increases urgency, not permission.
+4. An agent may stop an actively harmful operation and preserve evidence, then must report and request approval before any repair.
+5. An auditor or tester reports every finding without fixing it, regardless of severity; the containment exception permits only stopping active harm.
+6. An orchestrator may recommend an out-of-scope fix but may not add it to a plan, task, or worker prompt without explicit user approval.
+7. An executor or designer that encounters an out-of-scope artifact stops and reports rather than editing it.
+8. A plan that silently bundles an adjacent critical fix must receive `needs-changes` or `blocked`, not `pass`.
+
 ## Audit Priority and Triage Conventions
 
 Use this shared priority rubric for audit findings:
 
-- `P0` critical: breaks production, security, or a key scenario; fix immediately.
-- `P1` serious: materially affects users or functionality; fix in the nearest release.
-- `P2` normal: visible defect or technical debt, workaround exists; fix in planned work.
-- `P3` minor/improvement: cosmetic, readability, small optimization; fix opportunistically.
+- `P0` critical: breaks production, security, or a key scenario; report and escalate immediately, and fix immediately only when already authorized by approved scope.
+- `P1` serious: materially affects users or functionality; prioritize the nearest authorized release.
+- `P2` normal: visible defect or technical debt, workaround exists; schedule within authorized planned work.
+- `P3` minor/improvement: cosmetic, readability, small optimization; keep advisory unless separately authorized.
 
-Audit agents recommend priorities; orchestrators own final triage. Orchestrators must verify each audit finding against actual code, architecture, product scope, and requirements; reprioritize by real impact and likelihood; and downgrade weak, speculative, out-of-scope, low-impact, or non-release-blocking findings to `P3`. Remove `P3` from the final required-fix list only, preserving it in raw audit reports, history, and advisory notes. Accepted `P0`/`P1`/`P2` findings must be fixed, assigned, or explicitly deferred according to current scope and release policy before completion.
+Audit agents recommend priorities; orchestrators own final triage. Orchestrators must verify each audit finding against actual code, architecture, product scope, and requirements; reprioritize by real impact and likelihood; and downgrade weak, speculative, low-impact, or non-release-blocking findings to `P3`. Remove `P3` from the final required-fix list only, preserving it in raw audit reports, history, and advisory notes. Accepted `P0`/`P1`/`P2` findings already within approved scope must be fixed, assigned, or explicitly deferred according to release policy before completion. Out-of-scope findings of every priority remain report-only until the user explicitly approves scope expansion.
 
-Executor-scope guard: an audit finding, especially `P3`/advisory feedback, does not authorize executors to expand their assigned task. Executors fix only the issues the orchestrator explicitly accepts and assigns; `P3` follow-up requires a separate orchestrator assignment.
+Scope guard: no audit finding authorizes an executor or any other role to expand its assigned task. A separate orchestrator assignment is necessary but not sufficient for out-of-scope work; the orchestrator must first confirm the work is already within approved scope or receive explicit user approval to expand it.
 
 ## Kanban Task Board Mode
 
@@ -72,7 +95,7 @@ Skills in task specs:
 - Preserve the app's existing user-facing bracketed skill invocation syntax (`[skill:slug]`) when it appears in prompts or user instructions.
 - Nodes should include the canonical skill matching their primary role unless task-level skills already guarantee it: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`.
 - Plan-audit nodes should include both `craft-agent-auditor` and `plan-auditor`.
-- Do not apply executor skills to audit/review/design/test nodes. Any implementation must be a separate executor node with `craft-agent-executor` and the `executor` primary role.
+- Do not apply executor skills to audit/review/design/test nodes. Authorized implementation must use a separate executor node with `craft-agent-executor` and the `executor` primary role; out-of-scope implementation requires explicit user approval before that node is added.
 
 ## Session Naming
 
@@ -548,7 +571,7 @@ The orchestrator is responsible for:
 13. Requiring every worker to report `Confidence: <0–100>%`; automatically spawning a separate result audit/review only when an executor, designer, or tester result has worker-reported or orchestrator-assessed confidence below 85%.
 14. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
 15. Handling OFFTOP side requests ephemerally without polluting the durable task context.
-16. Creating follow-up tasks when work is incomplete or risky.
+16. Creating follow-up tasks for concrete gaps within approved scope; out-of-scope follow-up requires explicit user approval first.
 
 ## Worker Prompt Requirements
 
@@ -666,5 +689,5 @@ Audit agents should:
 - Use the same `tag`.
 - Use a title that makes the audit scope clear.
 - Receive the original worker task, worker report, changed files/modules, and acceptance criteria.
-- Do not implement changes. Assign any implementation needed by the audit to a separate executor session loading `craft-agent-executor` and labeled `executor`.
+- Do not implement changes. Report implementation needs to the orchestrator. A separate executor session loading `craft-agent-executor` and labeled `executor` may be assigned only when the work is within approved scope or after the user explicitly approves scope expansion.
 - Return a clear pass/fail/risk report to the orchestrator.

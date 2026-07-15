@@ -21,6 +21,8 @@ Use `craft-agent-workflow` as the canonical reference for session naming, labels
 - Dispatch independent tasks in parallel by default; do not serialize independent work without a concrete reason.
 - Ask for approval before spawning worker sessions unless the user explicitly asked to create, spawn, launch, or send agents.
 - Use read-only exploration for planning. Do not edit project files during orchestration unless explicitly authorized.
+- Follow the canonical `craft-agent-workflow` scope-authority rule. Triage and report out-of-scope findings, but ask the user and receive explicit approval before adding their fixes to any plan, task, or worker prompt. Severity, including `P0`/security/data-loss impact, never grants authority.
+- If immediate harm is actively occurring, take only the actions strictly necessary to stop/cancel the harmful operation and preserve state/evidence, then report and request approval. Containment does not itself authorize a repair; add repair work only when it is already within approved scope or after the user explicitly approves scope expansion.
 - Receive and review worker reports before declaring overall work complete.
 - Require every worker final report to include `Confidence: <0–100>%`, grounded in completed verification, remaining uncertainty, and known risks.
 - If an executor, designer, or tester result has worker-reported or your own assessed confidence below 85%, spawn one separate bounded audit/review agent before accepting the result. Do not automatically spawn another auditor solely because an auditor or plan-auditor result is low-confidence. Treat confidence as a signal, not a substitute for evidence; missing verification, material contradictions, or high-risk uncertainty may require a bounded audit at any reported percentage.
@@ -44,10 +46,10 @@ Auditors recommend priorities; orchestrators own final triage. Before assigning 
 
 - Verify each finding against actual code, architecture, product scope, and requirements; do not accept audit findings blindly.
 - Re-prioritize `P0`/`P1`/`P2`/`P3` by real impact and likelihood.
-- Downgrade weak, speculative, out-of-scope, low-impact, or non-release-blocking findings to `P3`.
+- Downgrade weak, speculative, low-impact, or non-release-blocking findings to `P3`; scope status changes implementation authority, not finding severity.
 - Remove `P3` findings from the final required-fix list only; preserve them in raw reports/history/advisory notes for context/backlog.
-- Accepted `P0`/`P1`/`P2` findings must be fixed, assigned, or explicitly deferred according to current scope and release policy before completion.
-- Verify, accept/reject, and reprioritize findings before workers fix anything.
+- Accepted `P0`/`P1`/`P2` findings already within approved scope must be fixed, assigned, or explicitly deferred according to release policy before completion. Out-of-scope findings of every priority remain report-only until the user explicitly approves scope expansion.
+- Verify, accept/reject, and reprioritize findings before workers fix anything; triage never authorizes scope expansion.
 - Keep plan-auditor and review agents audit-only by default; do not make them responsible for implementation.
 
 ## Kanban Task Board Mode / Task Tools
@@ -91,7 +93,7 @@ Safe workflow:
 - Preserve explicit user-facing bracketed syntax such as `[skill:slug]` when users or specs intentionally include it.
 - Kanban nodes should include the canonical skill matching their primary role unless task-level skills already guarantee it: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`.
 - Plan-audit nodes should include both `craft-agent-auditor` and `plan-auditor`.
-- Keep audit/review/design/test nodes separate; do not attach `craft-agent-executor` to them. Any implementation is a separate executor node with the `executor` primary role.
+- Keep audit/review/design/test nodes separate; do not attach `craft-agent-executor` to them. Authorized implementation uses a separate executor node with the `executor` primary role; out-of-scope implementation requires explicit user approval before that node is added.
 
 ## OFFTOP / Ephemeral Requests
 
@@ -271,7 +273,7 @@ Critical spawn invariants:
   - Test/QA/verification: `[skill:craft-agent-tester]`.
 - Every non-orchestrator spawned agent must receive `subagent`, the correct primary role label (`executor`, `auditor`, `designer`, or `tester`), `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Every non-orchestrator spawned agent must receive the orchestrator session ID and explicit final reporting instructions.
-- Keep plan-auditor/review agents audit-only. If implementation is needed, assign it to a separate executor session loading `craft-agent-executor` and labeled `executor`.
+- Keep plan-auditor/review agents audit-only. If implementation is needed, assign it to a separate executor session loading `craft-agent-executor` and labeled `executor` only when it is within approved scope or after the user explicitly approves scope expansion.
 - If the spawn tool supports labels, set required labels at spawn time; otherwise include prompt instructions requiring the agent to set/preserve them.
 - Report spawned session names and working directories after spawning.
 
@@ -321,7 +323,7 @@ When workers finish:
 
 - Read their final reports and compare results against the original plan and acceptance criteria.
 - Check for missing work, integration risks, incomplete verification, vague reports, and conflicting changes.
-- Create follow-up tasks only for concrete gaps.
+- Create follow-up tasks only for concrete gaps within approved scope. Report out-of-scope gaps and request explicit user approval before adding them to a follow-up plan or prompt.
 - Do not merge or commit unless explicitly asked.
 - If an executor, designer, or tester result has worker-reported or independently assessed confidence below 85%, spawn one separate bounded audit/review agent. For a low-confidence auditor or plan-auditor result, resolve missing evidence, create one bounded discovery/retest task, explicitly accept/defer documented risk, or mark it blocked; do not start an automatic audit chain.
 
@@ -335,4 +337,4 @@ Audit/review agents should:
 - Receive the original task, worker report, changed files/modules, acceptance criteria, and verification expectations.
 - Verify and report only; do not implement fixes.
 - Return a clear pass/fail/risk report to the orchestrator.
-- Load and follow `craft-agent-auditor`. If implementation is needed, the orchestrator must assign it to a separate executor session loading `craft-agent-executor` and labeled `executor`.
+- Load and follow `craft-agent-auditor`. If implementation is needed, the orchestrator may assign it to a separate executor session loading `craft-agent-executor` and labeled `executor` only when it is within approved scope or after the user explicitly approves scope expansion.
