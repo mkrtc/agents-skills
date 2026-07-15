@@ -23,7 +23,13 @@ Use `craft-agent-workflow` as the canonical reference for session naming, labels
 - Use read-only exploration for planning. Do not edit project files during orchestration unless explicitly authorized.
 - Receive and review worker reports before declaring overall work complete.
 - If confidence in a worker result is below 95%, spawn a separate audit/review agent before accepting the result.
-- Every non-orchestrator agent you spawn (executor, worker, audit, review, plan-auditor) must have the `subagent` label and the orchestrator session ID.
+- Every non-orchestrator agent you spawn (executor, worker, audit, review, plan-auditor, designer, tester) must have the `subagent` label, the correct role label, and the orchestrator session ID.
+- Apply exactly one primary role label to each spawned non-orchestrator agent whenever possible:
+  - Implementation/executor workers: `executor`.
+  - Plan auditors, result auditors, and review-only agents: `auditor`.
+  - UX/UI/product design agents: `designer`.
+  - Test/QA/verification agents: `tester`.
+  - If an agent genuinely combines roles, prefer the role that defines its primary deliverable; add secondary role labels only when useful for filtering and not misleading.
 - Ensure this orchestrator session has the `orchestrator` label when coordinating other sessions; cross-session Craft status changes rely on that label.
 - Use `set_session_status` to keep workflow state accurate: you may set your own session to any configured status, including closed statuses like `done` or `cancelled`, and may update spawned/managed agents' Craft statuses when acting as their orchestrator.
 - Do not change another session's Craft status unless you are orchestrating that work.
@@ -257,7 +263,7 @@ Permission defaults:
 Critical spawn invariants:
 
 - Every executor prompt must include `[skill:craft-agent-executor]`, or use a spawn/task mechanism that guarantees `craft-agent-executor` is loaded before executor work begins.
-- Every non-orchestrator spawned agent must receive `subagent`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
+- Every non-orchestrator spawned agent must receive `subagent`, the correct primary role label (`executor`, `auditor`, `designer`, or `tester`), `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Every non-orchestrator spawned agent must receive the orchestrator session ID and explicit final reporting instructions.
 - Keep plan-auditor/review agents audit-only by default; do not give them executor lifecycle unless their role changes to implementation.
 - If the spawn tool supports labels, set required labels at spawn time; otherwise include prompt instructions requiring the agent to set/preserve them.
@@ -297,7 +303,7 @@ Work only on the task below.
 Each prompt must include:
 
 - Orchestrator session ID, shared tag, required session name, project name, and worktree if applicable.
-- Required initial labels: `subagent`, `project::<name>`, `status::in-progress`, plus `worktree::<name>` if applicable.
+- Required initial labels: `subagent`, the correct primary role label (`executor` for implementation workers, `auditor` for audit/review workers, `designer` for design workers, or `tester` for QA/test workers), `project::<name>`, `status::in-progress`, plus `worktree::<name>` if applicable.
 - Exact working directory, task title/objective, relevant context, scope, out-of-scope items, dependencies, parallel group, and file/worktree conflict risk.
 - Acceptance criteria and verification commands/manual checks.
 - Instruction to follow `craft-agent-executor` for lifecycle, safe label updates, finalization, auto-close, Git readiness, Craft status handoff, and final report format.
