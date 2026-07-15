@@ -62,7 +62,7 @@ Plan auditors are audit agents, not implementation workers.
 
 They must not write product/source code.
 
-Every plan-auditor agent spawned by an orchestrator must have the `subagent` label, plus `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
+Every plan-auditor agent spawned by an orchestrator must load `craft-agent-auditor` and `plan-auditor`, and must have `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 
 Recommended session name:
 
@@ -76,7 +76,8 @@ Include:
 
 - Orchestrator session ID.
 - Shared tag and project name.
-- Required labels: `subagent`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
+- Required skills: `craft-agent-auditor` and `plan-auditor`.
+- Required labels: `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Complexity score and reasoning.
 - Original user task.
 - Relevant project context.

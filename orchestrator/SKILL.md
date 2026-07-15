@@ -7,7 +7,7 @@ description: Project orchestration for Craft Agents. Use when the user asks for 
 
 Act as a project orchestrator, not as an executor.
 
-Use `craft-agent-workflow` as the canonical reference for session naming, labels, statuses, worktrees, Git readiness, worker final reports, and audit handoffs. Use `craft-agent-executor` as the canonical executor lifecycle/finalization skill. Use `plan-auditor` as the canonical plan-auditor role/output/finding-detail skill.
+Use `craft-agent-workflow` as the canonical reference for session naming, labels, statuses, worktrees, Git readiness, worker final reports, and audit handoffs. Use the matching canonical role skill for each spawned worker: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`. Use `plan-auditor` together with `craft-agent-auditor` for pre-implementation plan audits.
 
 ## Core Behavior
 
@@ -88,8 +88,9 @@ Safe workflow:
 - Effective child skills are ordered and de-duplicated with task-level skills first, then node-level skills.
 - Use skill slugs only; do not raw-inject full skill markdown into hidden prompts.
 - Preserve explicit user-facing bracketed syntax such as `[skill:slug]` when users or specs intentionally include it.
-- Kanban executor/implementation nodes should include `skills: ["craft-agent-executor"]` unless task-level skills already guarantee that skill is active.
-- Keep audit/review/plan-auditor nodes separate; do not attach `craft-agent-executor` to agents whose role is only audit, review, or discovery.
+- Kanban nodes should include the canonical skill matching their primary role unless task-level skills already guarantee it: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`.
+- Plan-audit nodes should include both `craft-agent-auditor` and `plan-auditor`.
+- Keep audit/review/design/test nodes separate; do not attach `craft-agent-executor` unless implementation is explicitly part of their assignment.
 
 ## OFFTOP / Ephemeral Requests
 
@@ -179,7 +180,7 @@ If a plan audit finds blocking uncertainty that cannot be resolved from availabl
 
 ### Plan Auditor Agents
 
-Plan auditors are audit agents, not implementation workers. Their detailed role, output format, and per-finding metadata are canonical in `plan-auditor`.
+Plan auditors are audit agents, not implementation workers. Their lifecycle and role boundaries are canonical in `craft-agent-auditor`; their specialized plan-audit output and finding detail are canonical in `plan-auditor`.
 
 Plan auditor session names:
 
@@ -262,10 +263,14 @@ Permission defaults:
 
 Critical spawn invariants:
 
-- Every executor prompt must include `[skill:craft-agent-executor]`, or use a spawn/task mechanism that guarantees `craft-agent-executor` is loaded before executor work begins.
+- Every non-orchestrator prompt must include its matching role skill, or use a spawn/task mechanism that guarantees the skill is loaded before work begins:
+  - Implementation/executor: `[skill:craft-agent-executor]`.
+  - Audit/review: `[skill:craft-agent-auditor]`; plan audits also include `[skill:plan-auditor]`.
+  - UX/UI/product design: `[skill:craft-agent-designer]`.
+  - Test/QA/verification: `[skill:craft-agent-tester]`.
 - Every non-orchestrator spawned agent must receive `subagent`, the correct primary role label (`executor`, `auditor`, `designer`, or `tester`), `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Every non-orchestrator spawned agent must receive the orchestrator session ID and explicit final reporting instructions.
-- Keep plan-auditor/review agents audit-only by default; do not give them executor lifecycle unless their role changes to implementation.
+- Keep plan-auditor/review agents audit-only by default; give them `craft-agent-auditor`, not executor lifecycle, unless their role changes to implementation.
 - If the spawn tool supports labels, set required labels at spawn time; otherwise include prompt instructions requiring the agent to set/preserve them.
 - Report spawned session names and working directories after spawning.
 
@@ -288,7 +293,7 @@ Fallback rules:
 
 ## Worker Prompt Requirements
 
-Executor lifecycle, label/status transitions, auto-close, Git readiness, and final report format are canonical in `craft-agent-executor` and `craft-agent-workflow`. Do not duplicate their full tables in orchestrator prompts; reference them and keep only these prompt essentials.
+Role lifecycle, label/status transitions, and final report formats are canonical in the matching `craft-agent-*` role skill and `craft-agent-workflow`. Executor auto-close and Git readiness are canonical in `craft-agent-executor`. Do not duplicate their full tables in orchestrator prompts; reference them and keep only these prompt essentials.
 
 Every spawned executor worker prompt must start with:
 
@@ -329,4 +334,4 @@ Audit/review agents should:
 - Receive the original task, worker report, changed files/modules, acceptance criteria, and verification expectations.
 - Verify and report by default; do not implement fixes unless explicitly asked.
 - Return a clear pass/fail/risk report to the orchestrator.
-- Remain audit-only by default and should not use `craft-agent-executor` unless converted into an implementation task.
+- Load and follow `craft-agent-auditor`; remain audit-only by default and do not use `craft-agent-executor` unless converted into an implementation task.

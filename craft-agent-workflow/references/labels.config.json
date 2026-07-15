@@ -70,6 +70,48 @@
       ]
     },
     {
+      "id": "workflow",
+      "name": "Workflow",
+      "color": {
+        "light": "#10B981",
+        "dark": "#34D399"
+      },
+      "children": [
+        {
+          "id": "executor",
+          "name": "Executor",
+          "color": {
+            "light": "#15803D",
+            "dark": "#86EFAC"
+          }
+        },
+        {
+          "id": "auditor",
+          "name": "Auditor",
+          "color": {
+            "light": "#0F766E",
+            "dark": "#5EEAD4"
+          }
+        },
+        {
+          "id": "designer",
+          "name": "Designer",
+          "color": {
+            "light": "#047857",
+            "dark": "#6EE7B7"
+          }
+        },
+        {
+          "id": "tester",
+          "name": "Tester",
+          "color": {
+            "light": "#4D7C0F",
+            "dark": "#BEF264"
+          }
+        }
+      ]
+    },
+    {
       "id": "priority",
       "name": "Priority",
       "color": {

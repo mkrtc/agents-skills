@@ -21,6 +21,7 @@ At the start, before meaningful work, ensure labels include:
 
 ```text
 subagent
+executor
 project::<name>
 status::in-progress
 ```
@@ -44,6 +45,7 @@ When changing status labels:
 3. Remove only old `status::<...>` labels.
 4. Preserve unrelated labels, including but not limited to:
    - `subagent`
+   - `executor`
    - `project::<...>`
    - `git::<...>`
    - `worktree::<...>`

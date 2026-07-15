@@ -66,6 +66,10 @@ Validate key skills:
 ```bash
 craft-agent skill validate orchestrator --source global
 craft-agent skill validate craft-agent-workflow --source global
+craft-agent skill validate craft-agent-executor --source global
+craft-agent skill validate craft-agent-auditor --source global
+craft-agent skill validate craft-agent-designer --source global
+craft-agent skill validate craft-agent-tester --source global
 ```
 
 ## Important config behavior

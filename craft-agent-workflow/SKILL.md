@@ -11,7 +11,7 @@ Use this skill when coordinating Craft Agent sessions, naming orchestrators/work
 
 - Keep orchestration and execution separate.
 - The orchestrator plans, scores task complexity from 1 to 5, runs the required plan audit gate, splits, dispatches, collects reports, and requests audits. It does not implement product/code changes itself.
-- Spawned workers execute one bounded task and report back to the orchestrator. The `craft-agent-executor` skill is the canonical executor/worker lifecycle for implementation agents.
+- Spawned workers execute one bounded task and report back to the orchestrator. Load the canonical skill matching the primary role: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`. Plan auditors use both `craft-agent-auditor` and `plan-auditor`.
 - Peer orchestrators may be spawned for separate orchestration streams; they are not subagents.
 - `OFFTOP` requests are ephemeral side checks handled by the orchestrator directly; do not add them to the durable plan/task context.
 - Labels are combinable metadata. Use valued labels for stateful dimensions instead of many mutually exclusive boolean labels.
@@ -68,8 +68,9 @@ Skills in task specs:
 - Effective child skills are ordered/de-duped with task-level skills first, then node-level skills.
 - Keep values as skill slugs; do not raw-inject full skill markdown into hidden prompts.
 - Preserve the app's existing user-facing bracketed skill invocation syntax (`[skill:slug]`) when it appears in prompts or user instructions.
-- Executor/implementation nodes should include `skills: ["craft-agent-executor"]` where appropriate, unless task-level skills already guarantee that skill is active.
-- Do not apply executor skills to audit/review-only nodes; those roles remain separate concerns.
+- Nodes should include the canonical skill matching their primary role unless task-level skills already guarantee it: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`.
+- Plan-audit nodes should include both `craft-agent-auditor` and `plan-auditor`.
+- Do not apply executor skills to audit/review/design/test-only nodes unless implementation is explicitly part of their assignment.
 
 ## Session Naming
 
@@ -123,14 +124,17 @@ project::TEST
 status::in-progress
 ```
 
-Typical worker labels:
+Typical executor labels:
 
 ```text
 subagent
+executor
 project::TEST
 status::in-progress
 worktree::test-fe-auth
 ```
+
+Use `auditor`, `designer`, or `tester` instead of `executor` when that is the worker's primary role.
 
 Typical completed worker labels with Git readiness:
 
@@ -185,15 +189,16 @@ subagent
 
 Every non-orchestrator agent spawned by an orchestrator must have the `subagent` label.
 
-This includes:
+This includes executor, worker, audit/review, plan-auditor, designer, tester, and other bounded task agents.
 
-- executor agents;
-- worker agents;
-- audit/review agents;
-- plan-auditor agents;
-- any other bounded task agent created by the orchestrator.
+Every non-orchestrator subagent should also receive the primary role label that best describes its deliverable:
 
-Do not apply `subagent` to the parent orchestrator session.
+- `executor` — implementation;
+- `auditor` — audit/review, including plan audit;
+- `designer` — product/UX/UI design;
+- `tester` — QA/testing/verification.
+
+Prefer exactly one primary role label. Add secondary role labels only when genuinely useful and not misleading. Do not apply `subagent` to the parent orchestrator session.
 
 Peer orchestrators are separate orchestrator streams and are not subagents.
 
@@ -461,7 +466,8 @@ Plan auditor prompts must include:
 
 - Orchestrator session ID.
 - Shared tag and project name.
-- Required labels: `subagent`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
+- Required skills: `craft-agent-auditor` and `plan-auditor`.
+- Required labels: `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Complexity score and justification.
 - Original user task.
 - Relevant project context.
@@ -543,7 +549,7 @@ The orchestrator is responsible for:
 
 ## Worker Prompt Requirements
 
-Executor/implementation worker prompts should use `craft-agent-executor` as the canonical lifecycle behavior. Manual executor prompts must include `[skill:craft-agent-executor]`, or the spawn/task mechanism must otherwise guarantee the skill is loaded before work begins. Because global skills affect future sessions broadly, keep worker prompts explicit about critical invariants even when referencing the skill.
+Every spawned worker prompt should use the canonical skill matching its primary role. Manual prompts must include `[skill:craft-agent-executor]`, `[skill:craft-agent-auditor]`, `[skill:craft-agent-designer]`, or `[skill:craft-agent-tester]`, or the spawn/task mechanism must otherwise guarantee the skill is loaded before work begins. Plan auditors include both `[skill:craft-agent-auditor]` and `[skill:plan-auditor]`. Because global skills affect future sessions broadly, keep worker prompts explicit about critical invariants even when referencing the skill.
 
 Permission-mode expectations:
 
@@ -567,16 +573,20 @@ Every spawned worker prompt must include:
 - Acceptance criteria.
 - Verification commands or manual checks.
 - Required final report format.
-- Explicit required starting labels: `subagent`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
+- Explicit required starting labels: `subagent`, the correct primary role label (`executor`, `auditor`, `designer`, or `tester`), `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Explicit finalization instructions, including the worker's responsibility to switch itself from `status::in-progress` to `status::done`, `status::blocked`, or `status::error` and to update its Craft session status.
 
-Every spawned worker prompt must start with:
+Every spawned worker prompt must start with the matching role skill and identity. For example, implementation workers use:
 
 ```text
+[skill:craft-agent-executor]
+
 You are an executor agent for one task created by an orchestrator.
 Do not broaden the scope.
 Work only on the task below.
 ```
+
+Audit, design, and test workers use the equivalent matching `craft-agent-*` skill and role identity. Plan auditors include both `[skill:craft-agent-auditor]` and `[skill:plan-auditor]`.
 
 ## Worker Finalization
 
@@ -586,6 +596,7 @@ At start or before meaningful work, every non-orchestrator spawned agent must en
 
 ```text
 subagent
+<executor | auditor | designer | tester>
 project::<name>
 status::in-progress
 ```
@@ -610,10 +621,10 @@ Final state mapping:
 Implementation rules:
 
 1. Read current labels first.
-2. Ensure `subagent` is present for every non-orchestrator spawned agent.
+2. Ensure `subagent` and the correct primary role label are present for every non-orchestrator spawned agent.
 3. Ensure `project::<name>` is present when project name is known.
 4. Remove only old `status::...` labels.
-5. Preserve unrelated labels such as `project::...`, `subagent`, `git::...`, and `worktree::...`.
+5. Preserve unrelated labels such as `project::...`, role labels, `subagent`, `git::...`, and `worktree::...`.
 6. Set exactly one final `status::...` label.
 7. Set Craft session status according to the mapping above; do not move the session into closed statuses such as `done` or `cancelled` yourself by default.
 8. Auto-close mode is explicit and opt-in only: if and only if an executor prompt contains the canonical phrase `auto-close on success: true`, the executor may set Craft session status to `done` instead of `needs-review` after all acceptance criteria and verification pass. Auto-close never applies to blocked/error/cancelled outcomes and never applies to audit/review agents.
