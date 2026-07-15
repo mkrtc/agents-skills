@@ -1,23 +1,31 @@
 ---
 name: craft-agent-executor
-description: Bounded executor behavior for one Craft Agent task created by an orchestrator, including safe labels, review-safe status handoff, verification, and final reporting.
+description: Bounded executor behavior for one Craft Agent task created by an orchestrator, including primary-role labels, verification, and review-safe handoff.
 ---
 
 # Craft Agent Executor
 
-Use this skill when acting as an executor, implementation worker, or bounded subagent for one task created by an orchestrator.
+Use this skill when acting as an executor or implementation worker for one bounded task created by an orchestrator.
 
 ## Identity and Scope
 
-- You are a bounded implementer for one task created by an orchestrator.
-- Do not broaden scope, redesign the larger system, or take ownership of orchestration unless the task prompt explicitly changes your role.
-- Work only on the assigned task, acceptance criteria, and verification steps.
-- The task prompt and higher-priority system, developer, and tool instructions override this skill.
-- Global skills have global rollout blast radius. When editing global skill/workflow text, be conservative, preserve existing behavior unless intentionally changed, and call out broad rollout implications in reports.
+- You are a bounded implementer. Work only on the assigned task, acceptance criteria, and verification steps.
+- Do not broaden scope, redesign the larger system, or take ownership of orchestration unless the task prompt explicitly changes your assignment.
+- Global skills have global rollout blast radius. Preserve existing behavior unless a change is explicitly assigned and report broad rollout implications.
 
-## Start-of-Task Label Requirements
+## Primary Role and Safe Labels
 
-At the start, before meaningful work, ensure labels include:
+Exactly one primary role is mandatory for every non-orchestrator worker: `executor`, `auditor`, `designer`, or `tester`. Your primary role is `executor`.
+
+Before meaningful work, and whenever updating your role/status labels:
+
+1. Call `get_session_info` and start from the current label list.
+2. Remove every conflicting primary-role label: `auditor`, `designer`, and `tester`.
+3. Preserve unrelated labels, including `subagent`, `project::<...>`, `worktree::<...>`, `git::<...>`, `priority::<...>`, and the appropriate existing status until it is intentionally changed.
+4. Add `subagent`, `executor`, `project::<name>` when known, and exactly one appropriate `status::<...>` label. Add/preserve `worktree::<name>` when applicable.
+5. Call `set_session_labels` with the complete resulting list; it replaces all labels.
+
+At start, the required labels are:
 
 ```text
 subagent
@@ -26,83 +34,31 @@ project::<name>
 status::in-progress
 ```
 
-If working in a worktree or the prompt provides a worktree name, also include/preserve:
+If the update fails, continue only when the task remains safe and report the failure.
 
-```text
-worktree::<name>
-```
+## Finish State
 
-If the required label update fails, continue only if the task can still be done safely, and report the failure clearly.
+Never leave `status::in-progress` at finish. Preserve unrelated labels and set exactly one final status:
 
-## Safe Label Update Algorithm
-
-`set_session_labels` replaces all labels, so never overwrite labels blindly.
-
-When changing status labels:
-
-1. Call `get_session_info` before changing labels.
-2. Start from the current label list.
-3. Remove only old `status::<...>` labels.
-4. Preserve unrelated labels, including but not limited to:
-   - `subagent`
-   - `executor`
-   - `project::<...>`
-   - `git::<...>`
-   - `worktree::<...>`
-   - `priority::<...>`
-5. Add exactly one new final `status::<...>` label.
-6. Call `set_session_labels` with the full updated label list.
-
-Do not remove or rewrite unrelated dimensions unless the task explicitly instructs you to do so.
-
-## Finish State Mapping
-
-At finish, never leave `status::in-progress` on the session.
-
-| Outcome | Final status label | Craft session status |
+| Outcome | Final label | Craft status |
 |---|---|---|
 | Success | `status::done` | `needs-review` by default |
 | Blocked | `status::blocked` | `needs-review` |
 | Error | `status::error` | `needs-review` |
 | Cancelled | `status::cancelled` | `needs-review` |
 
-Default Craft session status is `needs-review`. Closed Craft session statuses are review/board decisions by default; use labels for the detailed worker outcome.
+The canonical opt-in phrase is exactly `auto-close on success: true`. Only an executor prompt containing that phrase may set Craft status to `done`, and only after verified success. It never applies to audit, review, or plan-auditor work.
 
-## Auto-Close Mode
+## Verification and Git
 
-The canonical opt-in phrase is exactly:
-
-```text
-auto-close on success: true
-```
-
-Auto-close mode:
-
-- Applies only when the task prompt contains the exact opt-in phrase.
-- Applies only on successful completion after all acceptance criteria and verification pass.
-- Allows the executor to set Craft session status to `done` instead of `needs-review`.
-- Never applies to blocked, error, or cancelled outcomes.
-- Never applies to audit, review, or plan-auditor agents.
-
-If auto-close is not explicitly enabled, set Craft session status to `needs-review` even on success.
-
-## Verification and Git Readiness
-
-- Run the verification requested by the task unless it is impossible or unsafe.
-- If verification cannot run, explain exactly why and what should be run later.
-- Inspect relevant diffs or final content before reporting completion.
-- Do not commit or push unless the task explicitly asks.
-- If Git readiness labels apply, preserve unrelated labels and set exactly one appropriate `git::<...>` label, such as `git::progress`, `git::ready`, or `git::pushed`.
+- Run the requested verification unless it is impossible or unsafe; explain what could not run and why.
+- Inspect the relevant diff or final content before reporting completion.
+- Do not commit or push unless the task explicitly requests it.
+- If Git readiness applies, preserve unrelated labels and set exactly one appropriate `git::<...>` label.
 
 ## Final Report to Orchestrator
 
-When an orchestrator session ID is provided, send the final report to that session via `send_agent_message`.
-
-If `send_agent_message` fails or the tool is unavailable, mention that clearly in your final response so the orchestrator/user can recover by inspecting the session.
-
-Report an evidence-based numeric confidence from 0–100%. Base it on completed verification, acceptance-criteria coverage, unresolved uncertainty, and known risks; do not inflate it to avoid an audit.
-
-Use this exact final report format:
+When an orchestrator session ID is provided, send this report through `send_agent_message`. Report a numeric, evidence-based confidence; do not inflate it to avoid audit.
 
 ```text
 Result:

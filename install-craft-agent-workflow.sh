@@ -282,8 +282,13 @@ validate_install() {
 
   if command -v craft-agent >/dev/null 2>&1; then
     log "Running best-effort Craft Agent CLI validation"
-    craft-agent skill validate craft-agent-workflow --source global || warn "craft-agent skill validate craft-agent-workflow failed"
     craft-agent skill validate orchestrator --source global || warn "craft-agent skill validate orchestrator failed"
+    craft-agent skill validate craft-agent-workflow --source global || warn "craft-agent skill validate craft-agent-workflow failed"
+    craft-agent skill validate craft-agent-executor --source global || warn "craft-agent skill validate craft-agent-executor failed"
+    craft-agent skill validate craft-agent-auditor --source global || warn "craft-agent skill validate craft-agent-auditor failed"
+    craft-agent skill validate craft-agent-designer --source global || warn "craft-agent skill validate craft-agent-designer failed"
+    craft-agent skill validate craft-agent-tester --source global || warn "craft-agent skill validate craft-agent-tester failed"
+    craft-agent skill validate plan-auditor --source global || warn "craft-agent skill validate plan-auditor failed"
     craft-agent label list >/dev/null || warn "craft-agent label list failed"
   else
     warn "craft-agent CLI not found; skipped Craft Agent validation"

@@ -1,41 +1,33 @@
 # Orchestrator Planning Audit Protocol
 
-This reference documents the required planning quality gate for Craft Agent orchestrators.
+This reference is subordinate to [`craft-agent-workflow/SKILL.md`](../SKILL.md), the canonical source for shared workflow rules.
 
 ## Goal
 
-Improve task formulation and reduce bugs, weak plans, missed risks, security issues, and bad implementation splits before executor agents start work.
+Improve task formulation and reduce missed risks before executor agents start work.
 
 ## Complexity score
 
-Every orchestrator must score the task from 1 to 5 and include the score in the plan:
+Every plan includes:
 
 ```text
 Complexity: <1-5>/5
 Reasoning: <short justification>
 ```
 
-| Score | Meaning | Typical signs |
-|---|---|---|
-| `1` | Very simple | Localized, low-risk, one small change or clear investigation |
-| `2` | Simple | Bounded task, known pattern, limited files/modules, low ambiguity |
-| `3` | Moderate | Multiple files/modules, some ambiguity, integration concerns, meaningful testing needed |
-| `4` | Hard | Cross-module/system changes, migrations, infra/deploy risk, concurrency, external APIs, security/data risk |
-| `5` | Very hard | High ambiguity or high blast radius, architecture changes, critical security/data/destructive risk, many dependencies |
+| Score | Meaning |
+|---|---|
+| `1` | Very simple, localized, low-risk |
+| `2` | Simple, bounded, known pattern |
+| `3` | Moderate, multi-file/module or integration risk |
+| `4` | Hard, cross-system, migration, infra, security, or data risk |
+| `5` | Very hard, high ambiguity or blast radius |
 
 ## Required audit flow
 
-### Complexity 1-2
+For complexity `1` or `2`: draft the plan, run one plan auditor, incorporate accepted findings, produce the final plan, then dispatch executors if approved.
 
-1. Draft the plan.
-2. Spawn `1` plan-auditor agent.
-3. Incorporate accepted findings.
-4. Produce the final plan.
-5. Only then dispatch executor workers if execution is requested/approved.
-
-### Complexity 3+
-
-Use two audit rounds.
+For complexity `3+`, use two rounds:
 
 | Complexity | Auditors per round |
 |---|---:|
@@ -43,62 +35,19 @@ Use two audit rounds.
 | `4` | `2` |
 | `5` | `3` |
 
-Workflow:
+Draft, audit round 1, revise, audit round 2, then produce the final plan before executor dispatch. If a plan audit finds blocking uncertainty, ask the user or create a bounded discovery task before implementation.
 
-1. Draft the plan.
-2. Spawn round-1 plan auditors.
-3. Collect round-1 reports.
-4. Rewrite the plan using accepted findings.
-5. Spawn round-2 plan auditors with the revised plan.
-6. Collect round-2 reports.
-7. Produce the final plan using the last audit findings.
-8. Only then dispatch executor workers if execution is requested/approved.
+## Plan-auditor role
 
-If audits reveal blocking uncertainty, ask the user or create discovery tasks before implementation.
+Plan auditors are audit-only workers. They load `craft-agent-auditor` and `plan-auditor`, carry `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and any worktree label, and must not implement, commit, or push. Any implementation needed by a plan review goes to a separate `executor` session loading `craft-agent-executor` and labeled `executor`.
 
-## Plan auditor role
+Recommended name: `${tag} Plan Audit R<round>-<n>`.
 
-Plan auditors are audit agents, not implementation workers.
+Prompts include the orchestrator ID, tag/project/worktree, complexity and reasoning, original task/context, plan, no-implementation instruction, and review criteria spanning assumptions, security, dependencies, conflicts, parallelism, verification, rollout, and scope.
 
-They must not write product/source code.
+## Required plan-auditor response
 
-Every plan-auditor agent spawned by an orchestrator must load `craft-agent-auditor` and `plan-auditor`, and must have `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
-
-Recommended session name:
-
-```text
-${tag} Plan Audit R<round>-<n>
-```
-
-## Plan auditor prompt checklist
-
-Include:
-
-- Orchestrator session ID.
-- Shared tag and project name.
-- Required skills: `craft-agent-auditor` and `plan-auditor`.
-- Required labels: `subagent`, `auditor`, `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
-- Complexity score and reasoning.
-- Original user task.
-- Relevant project context.
-- Draft/revised plan to audit.
-- Explicit instruction not to implement.
-- Review criteria:
-  - inaccuracies;
-  - vulnerabilities;
-  - weak points;
-  - bad decisions;
-  - missing dependencies;
-  - unclear requirements;
-  - file/worktree conflicts;
-  - missing parallel groups/dependencies;
-  - unnecessary serialization of independent tasks;
-  - test gaps;
-  - rollout/deploy risks;
-  - security/data risks;
-  - over/under-scoping.
-
-## Required auditor response
+When both auditor skills load, this specialized schema supersedes the generic auditor schema:
 
 ```text
 Plan Audit Result:
@@ -108,12 +57,12 @@ Plan Audit Result:
 - Minor findings:
 - Missing context/questions:
 - Recommended plan changes:
-- Confidence in plan after changes: <0–100>%
+- Confidence: <0–100>%
 - Confidence rationale:
 ```
 
-## Distinction from result audits
+Each actionable finding includes `[P0]`–`[P3]`, evidence, impact, likelihood, and recommendation.
 
-This protocol audits the plan before executor workers start.
+## Result audits and terminal handling
 
-It is separate from the result-audit rule: every worker reports evidence-based numeric confidence, and a separate result audit is required when worker-reported or orchestrator-assessed confidence is below 85%. Missing verification, contradictions, or material high-risk uncertainty may still require an audit at any percentage.
+The automatic below-85% result-audit trigger applies only to executor, designer, and tester results. It does not trigger from auditor or plan-auditor confidence. For a low-confidence audit result, the orchestrator must resolve missing evidence, create one bounded discovery/retest task, explicitly accept or defer the documented risk, or mark it blocked. Do not create an unbounded audit chain.

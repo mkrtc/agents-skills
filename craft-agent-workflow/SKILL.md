@@ -9,6 +9,8 @@ Use this skill when coordinating Craft Agent sessions, naming orchestrators/work
 
 ## Core Principles
 
+`craft-agent-workflow/SKILL.md` is the canonical source for shared workflow rules. If an orchestrator skill or workflow reference conflicts with it, this skill wins.
+
 - Keep orchestration and execution separate.
 - The orchestrator plans, scores task complexity from 1 to 5, runs the required plan audit gate, splits, dispatches, collects reports, and requests audits. It does not implement product/code changes itself.
 - Spawned workers execute one bounded task and report back to the orchestrator. Load the canonical skill matching the primary role: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`. Plan auditors use both `craft-agent-auditor` and `plan-auditor`.
@@ -70,7 +72,7 @@ Skills in task specs:
 - Preserve the app's existing user-facing bracketed skill invocation syntax (`[skill:slug]`) when it appears in prompts or user instructions.
 - Nodes should include the canonical skill matching their primary role unless task-level skills already guarantee it: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`.
 - Plan-audit nodes should include both `craft-agent-auditor` and `plan-auditor`.
-- Do not apply executor skills to audit/review/design/test-only nodes unless implementation is explicitly part of their assignment.
+- Do not apply executor skills to audit/review/design/test nodes. Any implementation must be a separate executor node with `craft-agent-executor` and the `executor` primary role.
 
 ## Session Naming
 
@@ -175,7 +177,7 @@ Use:
 orchestrator
 ```
 
-This is an optional user-managed label for orchestrator sessions. Do not require agents to set it automatically unless the user explicitly asks.
+Every session coordinating other sessions must self-apply and preserve this label before spawning workers or changing another session's Craft status. This is mandatory because cross-session status changes rely on it.
 
 Do not use `orchestrator` on spawned executor, audit, review, or plan-auditor agents; those use `subagent`.
 
@@ -191,14 +193,14 @@ Every non-orchestrator agent spawned by an orchestrator must have the `subagent`
 
 This includes executor, worker, audit/review, plan-auditor, designer, tester, and other bounded task agents.
 
-Every non-orchestrator subagent should also receive the primary role label that best describes its deliverable:
+Every non-orchestrator subagent must have exactly one primary role label that best describes its deliverable:
 
 - `executor` — implementation;
 - `auditor` — audit/review, including plan audit;
 - `designer` — product/UX/UI design;
 - `tester` — QA/testing/verification.
 
-Prefer exactly one primary role label. Add secondary role labels only when genuinely useful and not misleading. Do not apply `subagent` to the parent orchestrator session.
+Exactly one primary role is mandatory, not merely preferred. Role skills must remove conflicting primary-role labels while preserving unrelated labels. Do not apply `subagent` to the parent orchestrator session.
 
 Peer orchestrators are separate orchestrator streams and are not subagents.
 
@@ -396,8 +398,8 @@ Peer orchestrator prompt requirements:
 - Include the new task and relevant project context.
 - Include the parent/current orchestrator session ID for coordination.
 - Include a short summary of active workers/tasks that may conflict, without dumping unrelated context.
-- Explicitly instruct: if the new task may interfere with current active work, use a new worktree.
-- Explicitly instruct: if it discovers the task is actually safe and non-conflicting, it may proceed in the current workspace according to project rules.
+- Include exactly: `If this task may interfere or conflict with the current active tasks, work in a new worktree.`
+- Include exactly: `If this task is new but can be done without interfering with current active agents, update your own plan and dispatch agents as needed.`
 - Require it to follow `craft-agent-workflow` naming, labels, statuses, worktree, and audit rules.
 
 ## Planning Complexity and Plan Audit Gate
@@ -486,7 +488,7 @@ Plan Audit Result:
 - Minor findings:
 - Missing context/questions:
 - Recommended plan changes:
-- Confidence in plan after changes: <0–100>%
+- Confidence: <0–100>%
 - Confidence rationale:
 ```
 
@@ -543,7 +545,7 @@ The orchestrator is responsible for:
 10. Giving each agent a complete self-contained prompt.
 11. Receiving final reports from agents.
 12. Checking reports for completeness, contradictions, and risk.
-13. Requiring every worker to report `Confidence: <0–100>%` and spawning an audit/review agent whenever worker-reported or orchestrator-assessed confidence is below 85%.
+13. Requiring every worker to report `Confidence: <0–100>%`; automatically spawning a separate result audit/review only when an executor, designer, or tester result has worker-reported or orchestrator-assessed confidence below 85%.
 14. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
 15. Handling OFFTOP side requests ephemerally without polluting the durable task context.
 16. Creating follow-up tasks when work is incomplete or risky.
@@ -622,21 +624,22 @@ Final state mapping:
 Implementation rules:
 
 1. Read current labels first.
-2. Ensure `subagent` and the correct primary role label are present for every non-orchestrator spawned agent.
-3. Ensure `project::<name>` is present when project name is known.
-4. Remove only old `status::...` labels.
-5. Preserve unrelated labels such as `project::...`, role labels, `subagent`, `git::...`, and `worktree::...`.
-6. Set exactly one final `status::...` label.
-7. Set Craft session status according to the mapping above; do not move the session into closed statuses such as `done` or `cancelled` yourself by default.
-8. Auto-close mode is explicit and opt-in only: if and only if an executor prompt contains the canonical phrase `auto-close on success: true`, the executor may set Craft session status to `done` instead of `needs-review` after all acceptance criteria and verification pass. Auto-close never applies to blocked/error/cancelled outcomes and never applies to audit/review agents.
-9. If Git readiness applies, set exactly one of:
+2. Remove every conflicting primary-role label and add exactly the assigned primary role: `executor`, `auditor`, `designer`, or `tester`.
+3. Ensure `subagent` and `project::<name>` are present when applicable.
+4. Preserve unrelated labels such as `project::...`, `subagent`, `git::...`, `worktree::...`, and `priority::...`.
+5. Replace only old `status::...` labels and set exactly one appropriate final `status::...` label.
+6. Set Craft session status according to the mapping above; do not move the session into closed statuses such as `done` or `cancelled` yourself by default.
+7. Auto-close mode is explicit and opt-in only: if and only if an executor prompt contains the canonical phrase `auto-close on success: true`, the executor may set Craft session status to `done` instead of `needs-review` after all acceptance criteria and verification pass. Auto-close never applies to blocked/error/cancelled outcomes and never applies to audit/review agents.
+8. If Git readiness applies, set exactly one of:
    - `git::progress` if not ready to push;
    - `git::ready` if ready to push;
    - `git::pushed` if already pushed.
-10. Return/send the final output to the orchestrator session.
-11. If label/status update fails or cross-session reporting fails, mention that explicitly in the final report.
+9. Return/send the final output to the orchestrator session.
+10. If label/status update fails or cross-session reporting fails, mention that explicitly in the final report.
 
-## Worker Final Report Format
+## Executor Final Report Format
+
+The generic `Result:` template is executor-only. Role-specific report schemas are authoritative for auditors, designers, testers, and plan auditors; when both auditor skills load, `plan-auditor` supersedes the generic auditor schema.
 
 ```text
 Result:
@@ -654,12 +657,14 @@ Result:
 
 ## Audit Rule
 
-Every worker must report `Confidence: <0–100>%` with a short rationale grounded in completed verification, remaining uncertainty, and known risks. If worker-reported confidence or the orchestrator's independent assessed confidence is below 85%, the orchestrator must spawn a separate audit/review agent. Confidence does not override evidence: missing verification, contradictions, or material high-risk uncertainty may require an audit at any percentage.
+Every worker must report `Confidence: <0–100>%` with a short rationale grounded in completed verification, remaining uncertainty, and known risks. The automatic below-85% result-audit trigger applies only to executor, designer, and tester results; it does not apply to auditor or plan-auditor results. Confidence does not override evidence: missing verification, contradictions, or material high-risk uncertainty may require a bounded audit at any percentage.
+
+A low-confidence auditor or plan-auditor result must not automatically spawn another auditor solely from confidence. The orchestrator must take one terminal action: resolve missing evidence; create one bounded discovery or retest task; explicitly accept or defer the documented risk; or mark the result blocked. Do not create an unbounded audit chain.
 
 Audit agents should:
 
 - Use the same `tag`.
 - Use a title that makes the audit scope clear.
 - Receive the original worker task, worker report, changed files/modules, and acceptance criteria.
-- Avoid implementing changes unless explicitly asked; the default audit task is verification and reporting.
+- Do not implement changes. Assign any implementation needed by the audit to a separate executor session loading `craft-agent-executor` and labeled `executor`.
 - Return a clear pass/fail/risk report to the orchestrator.

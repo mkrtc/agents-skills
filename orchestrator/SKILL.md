@@ -23,14 +23,14 @@ Use `craft-agent-workflow` as the canonical reference for session naming, labels
 - Use read-only exploration for planning. Do not edit project files during orchestration unless explicitly authorized.
 - Receive and review worker reports before declaring overall work complete.
 - Require every worker final report to include `Confidence: <0–100>%`, grounded in completed verification, remaining uncertainty, and known risks.
-- If the worker-reported confidence or your own assessed confidence in the result is below 85%, spawn a separate audit/review agent before accepting the result. Treat confidence as a signal, not a substitute for evidence; missing verification, material contradictions, or high-risk uncertainty may require an audit at any reported percentage.
+- If an executor, designer, or tester result has worker-reported or your own assessed confidence below 85%, spawn one separate bounded audit/review agent before accepting the result. Do not automatically spawn another auditor solely because an auditor or plan-auditor result is low-confidence. Treat confidence as a signal, not a substitute for evidence; missing verification, material contradictions, or high-risk uncertainty may require a bounded audit at any reported percentage.
 - Every non-orchestrator agent you spawn (executor, worker, audit, review, plan-auditor, designer, tester) must have the `subagent` label, the correct role label, and the orchestrator session ID.
-- Apply exactly one primary role label to each spawned non-orchestrator agent whenever possible:
+- Apply exactly one mandatory primary role label to each spawned non-orchestrator agent:
   - Implementation/executor workers: `executor`.
   - Plan auditors, result auditors, and review-only agents: `auditor`.
   - UX/UI/product design agents: `designer`.
   - Test/QA/verification agents: `tester`.
-  - If an agent genuinely combines roles, prefer the role that defines its primary deliverable; add secondary role labels only when useful for filtering and not misleading.
+  - Do not combine primary roles; create separate workers when deliverables require different roles.
 - Ensure this orchestrator session has the `orchestrator` label when coordinating other sessions; cross-session Craft status changes rely on that label.
 - Use `set_session_status` to keep workflow state accurate: you may set your own session to any configured status, including closed statuses like `done` or `cancelled`, and may update spawned/managed agents' Craft statuses when acting as their orchestrator.
 - Do not change another session's Craft status unless you are orchestrating that work.
@@ -91,7 +91,7 @@ Safe workflow:
 - Preserve explicit user-facing bracketed syntax such as `[skill:slug]` when users or specs intentionally include it.
 - Kanban nodes should include the canonical skill matching their primary role unless task-level skills already guarantee it: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`.
 - Plan-audit nodes should include both `craft-agent-auditor` and `plan-auditor`.
-- Keep audit/review/design/test nodes separate; do not attach `craft-agent-executor` unless implementation is explicitly part of their assignment.
+- Keep audit/review/design/test nodes separate; do not attach `craft-agent-executor` to them. Any implementation is a separate executor node with the `executor` primary role.
 
 ## OFFTOP / Ephemeral Requests
 
@@ -271,7 +271,7 @@ Critical spawn invariants:
   - Test/QA/verification: `[skill:craft-agent-tester]`.
 - Every non-orchestrator spawned agent must receive `subagent`, the correct primary role label (`executor`, `auditor`, `designer`, or `tester`), `project::<name>`, `status::in-progress`, and `worktree::<name>` if applicable.
 - Every non-orchestrator spawned agent must receive the orchestrator session ID and explicit final reporting instructions.
-- Keep plan-auditor/review agents audit-only by default; give them `craft-agent-auditor`, not executor lifecycle, unless their role changes to implementation.
+- Keep plan-auditor/review agents audit-only. If implementation is needed, assign it to a separate executor session loading `craft-agent-executor` and labeled `executor`.
 - If the spawn tool supports labels, set required labels at spawn time; otherwise include prompt instructions requiring the agent to set/preserve them.
 - Report spawned session names and working directories after spawning.
 
@@ -312,7 +312,7 @@ Each prompt must include:
 - Required initial labels: `subagent`, the correct primary role label (`executor` for implementation workers, `auditor` for audit/review workers, `designer` for design workers, or `tester` for QA/test workers), `project::<name>`, `status::in-progress`, plus `worktree::<name>` if applicable.
 - Exact working directory, task title/objective, relevant context, scope, out-of-scope items, dependencies, parallel group, and file/worktree conflict risk.
 - Acceptance criteria and verification commands/manual checks.
-- Instruction to follow `craft-agent-executor` for lifecycle, safe label updates, finalization, auto-close, Git readiness, Craft status handoff, and final report format.
+- Instruction to follow the matching primary-role skill for lifecycle, safe label updates, finalization, Git guardrails, Craft status handoff, and its role-specific final report format. Only executor prompts may use executor auto-close.
 - Explicit instruction to send the final report to the orchestrator session ID, include `Confidence: <0–100>%` with an evidence-based rationale, and report any label/status/message failure.
 
 ## Reviewing Workers
@@ -323,7 +323,7 @@ When workers finish:
 - Check for missing work, integration risks, incomplete verification, vague reports, and conflicting changes.
 - Create follow-up tasks only for concrete gaps.
 - Do not merge or commit unless explicitly asked.
-- If worker-reported confidence or your independently assessed confidence in any result is below 85%, spawn a separate audit/review agent.
+- If an executor, designer, or tester result has worker-reported or independently assessed confidence below 85%, spawn one separate bounded audit/review agent. For a low-confidence auditor or plan-auditor result, resolve missing evidence, create one bounded discovery/retest task, explicitly accept/defer documented risk, or mark it blocked; do not start an automatic audit chain.
 
 ## Audit / Review Agents
 
@@ -333,6 +333,6 @@ Audit/review agents should:
 
 - Use the same shared tag and worker naming format `${tag} ${title}`.
 - Receive the original task, worker report, changed files/modules, acceptance criteria, and verification expectations.
-- Verify and report by default; do not implement fixes unless explicitly asked.
+- Verify and report only; do not implement fixes.
 - Return a clear pass/fail/risk report to the orchestrator.
-- Load and follow `craft-agent-auditor`; remain audit-only by default and do not use `craft-agent-executor` unless converted into an implementation task.
+- Load and follow `craft-agent-auditor`. If implementation is needed, the orchestrator must assign it to a separate executor session loading `craft-agent-executor` and labeled `executor`.
