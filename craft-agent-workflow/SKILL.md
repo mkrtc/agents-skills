@@ -438,44 +438,48 @@ Reasoning: <short justification>
 
 Complexity scale:
 
-| Score | Meaning | Typical signs |
+| Score | Meaning | Required evidence |
 |---|---|---|
-| `1` | Very simple | Localized, low-risk, one small change or clear investigation |
-| `2` | Simple | Bounded task, known pattern, limited files/modules, low ambiguity |
-| `3` | Moderate | Multiple files/modules, some ambiguity, integration concerns, meaningful testing needed |
-| `4` | Hard | Cross-module/system changes, migrations, infra/deploy risk, concurrency, external APIs, security/data risk |
-| `5` | Very hard | High ambiguity or high blast radius, architecture changes, critical security/data/destructive risk, many dependencies |
+| `1` | Very simple | Localized low-risk change, one bounded investigation, configuration/text adjustment, or implementation following an existing pattern |
+| `2` | Simple | Bounded multi-file work within one module/domain, limited integration, or a small new behavior with clear acceptance criteria |
+| `3` | Moderate | At least one concrete cross-module contract change, multiple dependent implementation tasks, substantial unresolved product/technical ambiguity, or meaningful compatibility/rollout concerns |
+| `4` | Hard | Concrete cross-system impact, schema/data migration, infrastructure/deployment risk, concurrency, authentication/security boundary, external API integration, or high blast radius |
+| `5` | Very hard | At least two score-4 risk categories combined with critical blast radius, irreversibility, severe ambiguity, or many tightly coupled dependencies |
 
-### Audit Counts
+### Complexity Anti-Inflation Rules
 
-For complexity `1` or `2`:
+- Start every assessment at `1`. Increase the score only for concrete evidence present in the task or inspected project context.
+- The score measures implementation risk, coupling, ambiguity, and blast radius—not prompt length, orchestration overhead, repository size, or the amount of context inspected.
+- A localized change contained to one module/domain with no public contract, schema, security, infrastructure, concurrency, or deployment impact must be scored `1` or `2`; it may not be scored `3+`.
+- Needing tests, touching several nearby files, being unfamiliar with the codebase, or needing to inspect documentation does not by itself justify `3+`.
+- A clear bug fix or small feature that follows an existing project pattern defaults to `1`. Use `2` only when there is a named integration point, several coordinated local edits, or non-trivial edge-case coverage.
+- Score `3` requires naming the exact qualifying trigger from the table. Generic phrases such as “multiple files,” “integration concerns,” “meaningful testing,” or “potential risk” are insufficient.
+- Score `4` requires naming at least one concrete high-risk category and the affected boundary or system.
+- Score `5` requires naming at least two score-4 categories and explaining why their combination creates critical risk or blast radius.
+- When evidence fits two scores, choose the lower score. Uncertainty alone does not justify rounding up; perform bounded discovery if the uncertainty is genuinely blocking.
+- The plan's `Reasoning` must cite the specific evidence that satisfies the selected score. If it cannot, lower the score.
 
-- Draft the plan.
-- Spawn `1` plan-auditor agent.
-- Incorporate accepted findings.
-- Produce the final plan.
-- Only then spawn executor workers if execution is requested/approved.
+### Mandatory Single Audit Stage
 
-For complexity `3` or higher, use two audit rounds:
+Every plan, regardless of complexity, must pass exactly one plan-audit stage before executor workers may be spawned. Multiple plan auditors required for the same stage run in parallel; they do not create additional audit stages.
 
-| Complexity | Plan auditors per round |
+| Complexity | Plan auditors in the single stage |
 |---|---:|
+| `1` | `1` |
+| `2` | `1` |
 | `3` | `1` |
 | `4` | `2` |
 | `5` | `3` |
 
-Workflow for complexity `3+`:
+Workflow for every complexity level:
 
 1. Draft the plan.
-2. Spawn the required number of round-1 plan auditors.
-3. Collect round-1 audit reports.
-4. Rewrite the plan using accepted audit findings.
-5. Spawn the same number of round-2 plan auditors.
-6. Collect round-2 audit reports.
-7. Produce the final plan using the last audit findings.
-8. Only then spawn executor workers if execution is requested/approved.
+2. Spawn the required number of plan auditors for the single stage.
+3. Collect all audit reports and triage their findings.
+4. Incorporate accepted findings and produce the final plan.
+5. Only then spawn executor workers if execution is requested/approved.
 
-If a plan audit finds blocking uncertainty that cannot be resolved from available context, ask the user or create a discovery task before implementation.
+Do not run a second plan-audit stage. If the single audit stage finds blocking uncertainty that cannot be resolved from available context, ask the user or create a discovery task before implementation.
 
 ### Plan Auditor Role
 
@@ -484,7 +488,7 @@ Plan auditors are audit agents, not implementation workers.
 Plan auditor session names should use:
 
 ```text
-${tag} Plan Audit R<round>-<n>
+${tag} Plan Audit-<n>
 ```
 
 Plan auditor prompts must include:
@@ -527,7 +531,7 @@ Default concurrency:
 - If there are more than `5` independent tasks, dispatch them in waves by default.
 - The orchestrator may exceed `5` concurrent agents when tasks are demonstrably independent, low-conflict, and resource-safe.
 - For `6+` concurrent agents, the orchestrator must explicitly justify why higher concurrency is safe.
-- Plan-auditor agents are governed by the plan-audit gate and can run in parallel within each audit round; they do not count against executor wave size.
+- Plan-auditor agents are governed by the plan-audit gate and can run in parallel within the single audit stage; they do not count against executor wave size.
 - Peer orchestrators are separate orchestration streams and do not count as executor agents.
 
 Only serialize tasks when there is a concrete reason:
