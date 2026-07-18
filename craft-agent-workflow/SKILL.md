@@ -12,7 +12,7 @@ Use this skill when coordinating Craft Agent sessions, naming orchestrators/work
 `craft-agent-workflow/SKILL.md` is the canonical source for shared workflow rules. If an orchestrator skill or workflow reference conflicts with it, this skill wins.
 
 - Keep orchestration and execution separate.
-- The orchestrator plans, scores task complexity from 1 to 5, runs the required plan audit gate, splits, dispatches, collects reports, and requests audits. It does not implement product/code changes itself.
+- For normal requests, the orchestrator plans, scores task complexity from 1 to 5, runs the required plan audit gate, splits, dispatches, collects reports, and requests audits. For `FAST` requests, it uses the concise minimal-latency path, bypasses complexity scoring and audits, and dispatches execution immediately. It does not implement product/code changes itself.
 - Spawned workers execute one bounded task and report back to the orchestrator. Load the canonical skill matching the primary role: `craft-agent-executor`, `craft-agent-auditor`, `craft-agent-designer`, or `craft-agent-tester`. Plan auditors use both `craft-agent-auditor` and `plan-auditor`.
 - Peer orchestrators may be spawned for separate orchestration streams; they are not subagents.
 - `OFFTOP` requests are ephemeral side checks handled by the orchestrator directly; do not add them to the durable plan/task context.
@@ -393,6 +393,24 @@ Rules:
 - Do not carry OFFTOP details into future worker context. Treat the information as disposable after answering.
 - Answer briefly, then return to the active orchestration workflow.
 
+## FAST / Minimal-Latency Execution
+
+If a user message starts with `FAST` (case-insensitive, optionally followed by `:`), treat it as an explicit request and authorization to minimize wall-clock time and begin execution immediately. `FAST` is not OFFTOP: its task remains the active approved scope.
+
+FAST mode overrides the normal plan-audit gate and automatic result-audit trigger for that request:
+
+- Do not spawn a plan auditor, regardless of complexity. Create only a concise execution outline with objective, exact scope, acceptance criteria, working directory, and the smallest useful verification.
+- Do not ask for separate approval to spawn workers; the `FAST` marker is explicit launch authorization.
+- Dispatch the smallest sufficient number of executor agents immediately—one by default. Use parallel executors only when they are genuinely independent and reduce total elapsed time.
+- Do not spawn designer, tester, review, or audit agents unless execution is blocked without a specialized role or the user explicitly requests one.
+- Request only the narrowest targeted verification needed to catch an obvious failure in the changed behavior. Skip broad regression suites, coverage runs, unrelated lint/build checks, optional documentation, refactors, and polish.
+- Do not automatically audit a result because confidence is below `85%`. Report unverified areas and residual risk directly to the user instead of starting another agent chain.
+- Skip the immediate post-spawn control ping. Check liveness only when the worker is delayed or no activity/report is observed.
+- Keep worker prompts and final reporting concise while preserving exact scope, the orchestrator session ID, required role/labels, and the requirement to inspect the relevant diff or final content.
+- Focus only on the FAST task. Do not add adjacent fixes, improvements, or backlog work.
+
+FAST mode reduces ceremony, not safety authority. It never bypasses required confirmation for destructive or irreversible actions, production changes, credential/security-sensitive operations, data loss risk, migrations, or scope expansion. For those cases, perform only the minimum mandatory safety check or confirmation, then continue by the shortest safe path. Never claim that skipped tests or audits passed.
+
 ## Peer Orchestrators
 
 The orchestrator may spawn another orchestrator for a separate orchestration stream. A peer orchestrator is not a subagent and should not receive the `subagent` label.
@@ -427,14 +445,16 @@ Peer orchestrator prompt requirements:
 
 ## Planning Complexity and Plan Audit Gate
 
-Before spawning executor workers, the orchestrator must assess task complexity and run the required plan audit workflow.
+Before spawning executor workers, the orchestrator must assess task complexity and run the required plan audit workflow unless the request is in `FAST` mode. FAST requests use the minimal-latency execution path and bypass the plan-audit gate.
 
-Every orchestrator plan must include:
+Every non-FAST orchestrator plan must include:
 
 ```text
 Complexity: <1-5>/5
 Reasoning: <short justification>
 ```
+
+FAST execution outlines do not require complexity scoring.
 
 Complexity scale:
 
@@ -461,7 +481,7 @@ Complexity scale:
 
 ### Mandatory Single Audit Stage
 
-Every plan, regardless of complexity, must pass exactly one plan-audit stage before executor workers may be spawned. Multiple plan auditors required for the same stage run in parallel; they do not create additional audit stages.
+Every non-FAST plan, regardless of complexity, must pass exactly one plan-audit stage before executor workers may be spawned. Multiple plan auditors required for the same stage run in parallel; they do not create additional audit stages. FAST requests bypass this stage entirely.
 
 | Complexity | Plan auditors in the single stage |
 |---|---:|
@@ -558,7 +578,7 @@ If multiple tasks are independent and fit under the concurrency target, spawn al
 
 The orchestrator must not implement product/source changes directly.
 
-The orchestrator is responsible for:
+For normal requests, the orchestrator is responsible for the workflow below. In FAST mode, the FAST section supersedes items 1–8: inspect only minimum necessary context, use a concise outline without complexity scoring or plan audit, and dispatch the smallest sufficient executor set immediately.
 
 1. Inspecting enough project context to plan safely.
 2. Assessing task complexity from 1 to 5 and justifying it.
@@ -572,7 +592,7 @@ The orchestrator is responsible for:
 10. Giving each agent a complete self-contained prompt.
 11. Receiving final reports from agents.
 12. Checking reports for completeness, contradictions, and risk.
-13. Requiring every worker to report `Confidence: <0–100>%`; automatically spawning a separate result audit/review only when an executor, designer, or tester result has worker-reported or orchestrator-assessed confidence below 85%.
+13. Requiring every worker to report `Confidence: <0–100>%`; for normal requests, automatically spawning a separate result audit/review only when an executor, designer, or tester result has worker-reported or orchestrator-assessed confidence below 85%. FAST requests report uncertainty directly and do not trigger an automatic result-audit chain.
 14. Deciding whether new incoming tasks should be merged into the current plan or delegated to a peer orchestrator.
 15. Handling OFFTOP side requests ephemerally without polluting the durable task context.
 16. Creating follow-up tasks for concrete gaps within approved scope; out-of-scope follow-up requires explicit user approval first.
@@ -684,7 +704,7 @@ Result:
 
 ## Audit Rule
 
-Every worker must report `Confidence: <0–100>%` with a short rationale grounded in completed verification, remaining uncertainty, and known risks. The automatic below-85% result-audit trigger applies only to executor, designer, and tester results; it does not apply to auditor or plan-auditor results. Confidence does not override evidence: missing verification, contradictions, or material high-risk uncertainty may require a bounded audit at any percentage.
+Every worker must report `Confidence: <0–100>%` with a short rationale grounded in completed verification, remaining uncertainty, and known risks. For normal requests, the automatic below-85% result-audit trigger applies only to executor, designer, and tester results; it does not apply to auditor or plan-auditor results. FAST requests do not automatically spawn a result auditor at any confidence level; the orchestrator reports skipped verification and residual risk directly. Confidence does not override evidence: outside FAST mode, missing verification, contradictions, or material high-risk uncertainty may require a bounded audit at any percentage.
 
 A low-confidence auditor or plan-auditor result must not automatically spawn another auditor solely from confidence. The orchestrator must take one terminal action: resolve missing evidence; create one bounded discovery or retest task; explicitly accept or defer the documented risk; or mark the result blocked. Do not create an unbounded audit chain.
 
